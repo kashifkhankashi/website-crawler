@@ -15,7 +15,9 @@ import sys
 import json
 import csv
 import argparse
-from typing import Dict, List, Set
+import math
+import re
+from typing import Dict, List, Set, Tuple
 from urllib.parse import urlparse
 from datetime import datetime
 
@@ -162,12 +164,20 @@ class ReportGenerator:
         self._generate_sitemap(items)
     
     def _generate_json_report(self, items: List[dict], broken_links: Dict[str, dict]):
-        """Generate detailed JSON report."""
+        """Generate detailed JSON report, including keyword and image analysis for SEO."""
         report_data = {
             'crawl_date': datetime.now().isoformat(),
             'total_pages': len(items),
             'pages': []
         }
+
+        # Pre-compute keyword analysis across all pages
+        keyword_analysis, page_keyword_map = self._compute_keyword_analysis(items)
+        report_data['keyword_analysis'] = keyword_analysis
+
+        # Pre-compute image analysis across all pages
+        image_analysis = self._analyze_images(items)
+        report_data['image_analysis'] = image_analysis
         
         for item in items:
             url = item['url']
@@ -203,6 +213,7 @@ class ReportGenerator:
                 'word_count': item.get('word_count', 0),
                 'internal_links': item.get('internal_links', []),
                 'external_links': item.get('external_links', []),
+                'images': item.get('images', []),
                 'broken_links': page_broken_links,
                 'duplicate_status': duplicate_status,
                 'is_exact_duplicate': item.get('is_duplicate', False),
@@ -211,6 +222,10 @@ class ReportGenerator:
                 'content_hash': item.get('content_hash', ''),
                 'crawled_at': item.get('crawled_at', '')
             }
+
+            # Attach per-page keyword stats if available
+            if url in page_keyword_map:
+                page_data['keywords'] = page_keyword_map[url]
             
             report_data['pages'].append(page_data)
         
@@ -220,6 +235,257 @@ class ReportGenerator:
             json.dump(report_data, f, indent=2, ensure_ascii=False)
         
         print(f"✓ JSON report saved to: {json_path}")
+
+    def _compute_keyword_analysis(self, items: List[dict]) -> Tuple[dict, Dict[str, dict]]:
+        """
+        Compute basic keyword analysis using TF-IDF-style scoring.
+
+        Returns a tuple of:
+        - global keyword analysis dict for the whole site
+        - mapping of page URL -> per-page keyword stats suitable for embedding in JSON
+        """
+        page_tokens: Dict[str, List[str]] = {}
+        doc_freqs: Dict[str, int] = {}
+        term_counts_per_page: Dict[str, Dict[str, int]] = {}
+        total_tokens_per_page: Dict[str, int] = {}
+
+        stopwords = self._get_stopwords()
+
+        # Tokenize each page and build term/document statistics
+        for item in items:
+            url = item.get('url')
+            text_content = item.get('text_content', '') or ''
+            if not url or not text_content:
+                continue
+
+            tokens = self._tokenize(text_content)
+            if not tokens:
+                continue
+
+            # Remove stopwords and very short tokens
+            filtered_tokens = [t for t in tokens if t not in stopwords and len(t) > 2 and not t.isdigit()]
+            if not filtered_tokens:
+                continue
+
+            page_tokens[url] = filtered_tokens
+            total_tokens_per_page[url] = len(filtered_tokens)
+
+            term_counts: Dict[str, int] = {}
+            for tok in filtered_tokens:
+                term_counts[tok] = term_counts.get(tok, 0) + 1
+            term_counts_per_page[url] = term_counts
+
+            # Update document frequencies
+            unique_terms = set(term_counts.keys())
+            for term in unique_terms:
+                doc_freqs[term] = doc_freqs.get(term, 0) + 1
+
+        num_docs = len(page_tokens)
+        if num_docs == 0:
+            # No text content available; return empty analysis
+            return {'global_top_keywords': []}, {}
+
+        # Compute IDF for each term
+        idf: Dict[str, float] = {}
+        for term, df in doc_freqs.items():
+            # +1 smoothing to avoid division by zero, add 1 so IDF is always positive
+            idf[term] = math.log((num_docs) / (1 + df)) + 1.0
+
+        # Per-page TF-IDF and keyword stats
+        page_keyword_map: Dict[str, dict] = {}
+        global_term_totals: Dict[str, int] = {}
+
+        for url, term_counts in term_counts_per_page.items():
+            total_tokens = total_tokens_per_page.get(url, 0) or 1
+            keyword_entries = []
+
+            for term, count in term_counts.items():
+                tf = count / total_tokens
+                tf_idf = tf * idf.get(term, 0.0)
+                keyword_entries.append({
+                    'keyword': term,
+                    'count': count,
+                    'tf': round(tf, 6),
+                    'tf_idf': round(tf_idf, 6)
+                })
+                global_term_totals[term] = global_term_totals.get(term, 0) + count
+
+            # Sort keywords by TF-IDF descending, then by count
+            keyword_entries.sort(key=lambda x: (x['tf_idf'], x['count']), reverse=True)
+            top_keywords = keyword_entries[:20]
+
+            # Keyword ratio: share of total tokens covered by top keywords
+            top_keyword_tokens = sum(k['count'] for k in top_keywords)
+            keyword_ratio = top_keyword_tokens / total_tokens if total_tokens > 0 else 0.0
+
+            page_keyword_map[url] = {
+                'top_keywords': top_keywords,
+                'keyword_ratio': round(keyword_ratio, 4),
+                # Full term counts allow advanced per-keyword queries in the UI
+                'term_counts': term_counts
+            }
+
+        # Global top keywords across the site by total TF-IDF weight
+        global_scores: List[Tuple[str, float]] = []
+        for term, df in doc_freqs.items():
+            # Approximate global importance as idf * doc_freq
+            score = idf.get(term, 0.0) * df
+            global_scores.append((term, score))
+
+        global_scores.sort(key=lambda x: x[1], reverse=True)
+        global_top_terms = [t for t, _ in global_scores[:50]]
+
+        global_top_keywords = []
+        for term in global_top_terms:
+            global_top_keywords.append({
+                'keyword': term,
+                'doc_count': doc_freqs.get(term, 0),
+                'total_count': global_term_totals.get(term, 0),
+                'idf': round(idf.get(term, 0.0), 6)
+            })
+
+        # For each page, compute missing important (global) keywords
+        global_keyword_set = set(global_top_terms[:20])
+        for url, page_stats in page_keyword_map.items():
+            present_keywords = {k['keyword'] for k in page_stats.get('top_keywords', [])}
+            missing = sorted(global_keyword_set - present_keywords)
+            page_stats['missing_important_keywords'] = missing[:20]
+
+        keyword_analysis = {
+            'global_top_keywords': global_top_keywords
+        }
+
+        return keyword_analysis, page_keyword_map
+
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        """Simple tokenizer for keyword analysis."""
+        if not text:
+            return []
+        # Ensure lowercase and split on non-alphanumeric characters
+        text = text.lower()
+        return re.findall(r"[a-z0-9']+", text)
+
+    @staticmethod
+    def _get_stopwords() -> Set[str]:
+        """Basic English stopword list to exclude from keyword analysis."""
+        # Small built-in list to avoid external dependencies
+        return {
+            'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'else', 'when', 'while',
+            'for', 'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from', 'up', 'down',
+            'as', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+            'it', 'its', 'this', 'that', 'these', 'those',
+            'i', 'you', 'he', 'she', 'they', 'we', 'me', 'him', 'her', 'them', 'us',
+            'my', 'your', 'his', 'her', 'their', 'our',
+            'not', 'no', 'yes',
+            'so', 'too', 'very',
+            'can', 'could', 'should', 'would', 'will', 'just',
+            'do', 'does', 'did', 'done',
+            'have', 'has', 'had',
+            'about', 'into', 'over', 'after', 'before', 'again', 'once',
+        }
+
+    def _analyze_images(self, items: List[dict]) -> Dict[str, List[dict]]:
+        """
+        Analyze images across all pages for SEO:
+        - Missing ALT text
+        - Large (by content-length) images
+        - Duplicate images used on multiple pages
+        """
+        # Collect all images with page context
+        image_usage: Dict[str, Dict[str, dict]] = {}  # src -> page_url -> info
+        missing_alt_list: List[dict] = []
+
+        for item in items:
+            page_url = item.get('url')
+            title = item.get('title', '')
+            for img in item.get('images', []) or []:
+                src = img.get('src')
+                if not src:
+                    continue
+
+                if src not in image_usage:
+                    image_usage[src] = {}
+
+                image_usage[src][page_url] = {
+                    'page_url': page_url,
+                    'page_title': title,
+                    'alt': img.get('alt', ''),
+                    'width': img.get('width'),
+                    'height': img.get('height'),
+                }
+
+                # Missing or empty ALT text on this page
+                alt_text = (img.get('alt') or '').strip()
+                if not alt_text:
+                    missing_alt_list.append({
+                        'image_url': src,
+                        'page_url': page_url,
+                        'page_title': title,
+                    })
+
+        # Detect duplicate images (same src used on multiple pages)
+        duplicate_images: List[dict] = []
+        for src, pages in image_usage.items():
+            if len(pages) > 1:
+                duplicate_images.append({
+                    'image_url': src,
+                    'pages': list(pages.values())
+                })
+
+        # Detect large images by HEAD request (content-length), limited to avoid slowness
+        large_images: List[dict] = []
+        max_images_to_check = 200
+        size_threshold_bytes = 300 * 1024  # ~300KB
+
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+
+            session = requests.Session()
+            retry_strategy = Retry(
+                total=1,
+                backoff_factor=0.3,
+                status_forcelist=[429, 500, 502, 503, 504],
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+
+            checked = 0
+            for src, pages in image_usage.items():
+                if checked >= max_images_to_check:
+                    break
+                checked += 1
+                try:
+                    resp = session.head(src, allow_redirects=True, timeout=8)
+                    size_str = resp.headers.get('Content-Length')
+                    if not size_str:
+                        continue
+                    size = int(size_str)
+                    if size >= size_threshold_bytes:
+                        large_images.append({
+                            'image_url': src,
+                            'size_bytes': size,
+                            'pages': list(pages.values())
+                        })
+                except Exception:
+                    # Ignore individual failures; this is best-effort analysis
+                    continue
+
+        except ImportError:
+            # If requests is not available, skip large image analysis gracefully
+            pass
+
+        return {
+            'missing_alt': missing_alt_list,
+            'large_images': large_images,
+            'duplicate_images': duplicate_images,
+        }
     
     def _generate_csv_summary(self, items: List[dict], broken_links: Dict[str, dict]):
         """Generate CSV summary report."""

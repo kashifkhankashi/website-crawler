@@ -160,6 +160,9 @@ class SiteSpider(scrapy.Spider):
         
         # Extract links
         links = self._extract_links(response)
+
+        # Extract images (for SEO image analysis)
+        images = self._extract_images(response)
         
         # Create item
         item = PageItem()
@@ -170,6 +173,7 @@ class SiteSpider(scrapy.Spider):
         item['text_content'] = text_content
         item['internal_links'] = links['internal']
         item['external_links'] = links['external']
+        item['images'] = images
         
         # Handle redirects
         if response.status in [301, 302, 303, 307, 308]:
@@ -178,6 +182,47 @@ class SiteSpider(scrapy.Spider):
                 item['redirect_url'] = urljoin(response.url, redirect_url)
         
         return item
+
+    def _extract_images(self, response: HtmlResponse) -> List[dict]:
+        """
+        Extract image information (src, alt, basic size attributes) from the page.
+        """
+        soup = BeautifulSoup(response.text, 'lxml')
+        base_url = get_base_url(response)
+        images: List[dict] = []
+
+        for img in soup.find_all('img'):
+            src = img.get('src') or ''
+            if not src:
+                continue
+
+            # Convert relative to absolute URL
+            absolute_url = urljoin(base_url, src)
+            # Normalize URL (will also drop unsupported schemes)
+            normalized = self._normalize_url(absolute_url)
+            if not normalized:
+                continue
+
+            alt_text = (img.get('alt') or '').strip()
+
+            # Try to capture explicit width/height attributes (may be strings)
+            def _parse_int(value):
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return None
+
+            width = _parse_int(img.get('width'))
+            height = _parse_int(img.get('height'))
+
+            images.append({
+                'src': normalized,
+                'alt': alt_text,
+                'width': width,
+                'height': height,
+            })
+
+        return images
     
     def _extract_links(self, response: HtmlResponse) -> dict:
         """

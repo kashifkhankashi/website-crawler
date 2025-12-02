@@ -90,6 +90,15 @@
                 <button class="tab-btn" onclick="showSection('external-links')">
                     <i class="fas fa-external-link-alt"></i> External Links
                 </button>
+                <button class="tab-btn" onclick="showSection('image-analyzer')">
+                    <i class="fas fa-image"></i> Image Analyzer
+                </button>
+                <button class="tab-btn" onclick="showSection('keywords')">
+                    <i class="fas fa-key"></i> Keywords
+                </button>
+                <button class="tab-btn" onclick="showSection('keyword-search')">
+                    <i class="fas fa-search"></i> Keyword Search
+                </button>
                 <button class="tab-btn" onclick="showSection('statistics')">
                     <i class="fas fa-chart-pie"></i> Statistics
                 </button>
@@ -220,6 +229,101 @@
                             <h3>Similarity Distribution</h3>
                             <canvas id="similarityChart"></canvas>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Image Analyzer Section -->
+            <section id="image-analyzer-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-image"></i> Image Analyzer</h2>
+                    </div>
+                    <div class="image-analyzer-grid">
+                        <div class="image-analyzer-column">
+                            <h3>Missing ALT Text</h3>
+                            <div id="missingAltContainer">
+                                <p class="loading">Analyzing images for missing ALT text...</p>
+                            </div>
+                        </div>
+                        <div class="image-analyzer-column">
+                            <h3>Large Images (Possible Unoptimized)</h3>
+                            <div id="largeImagesContainer">
+                                <p class="loading">Checking image sizes...</p>
+                            </div>
+                        </div>
+                        <div class="image-analyzer-column">
+                            <h3>Duplicate Images Across Pages</h3>
+                            <div id="duplicateImagesContainer">
+                                <p class="loading">Finding duplicate image usage...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Keywords Section -->
+            <section id="keywords-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-key"></i> Keyword Analysis</h2>
+                    </div>
+                    <div class="section-actions">
+                        <input type="text" id="keywordSearchInput" placeholder="Search keywords..." class="search-box">
+                        <select id="keywordPageFilter" class="filter-select">
+                            <option value="all">All Pages</option>
+                        </select>
+                    </div>
+                    <div class="table-container">
+                        <table id="keywordsTable">
+                            <thead>
+                                <tr>
+                                    <th>Keyword</th>
+                                    <th>Pages Using It</th>
+                                    <th>Total Count</th>
+                                    <th>IDF</th>
+                                </tr>
+                            </thead>
+                            <tbody id="keywordsTableBody">
+                                <tr>
+                                    <td colspan="4" class="loading">Loading keyword analysis...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="keywordPageDetails" class="keyword-page-details"></div>
+                </div>
+            </section>
+
+            <!-- Keyword Search Section -->
+            <section id="keyword-search-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-search"></i> Keyword Search per Page</h2>
+                    </div>
+                    <div class="section-actions">
+                        <input type="text" id="keywordSearchTermInput" placeholder="Enter keyword (e.g. longhorn)" class="search-box">
+                        <button id="keywordSearchBtn" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table id="keywordSearchTable">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Keyword Count</th>
+                                    <th>Word Count</th>
+                                    <th>% of Words</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="keywordSearchTableBody">
+                                <tr>
+                                    <td colspan="5" class="loading">Enter a keyword above and click Search.</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>

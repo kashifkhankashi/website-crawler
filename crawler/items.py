@@ -19,6 +19,7 @@ class PageItem(scrapy.Item):
     meta_description = scrapy.Field()  # type: Optional[str]
     text_content = scrapy.Field()  # type: str
     word_count = scrapy.Field()  # type: int
+    images = scrapy.Field()  # type: List[dict]  # [{'src': str, 'alt': str, 'width': int, 'height': int}]
     
     # Links found on the page
     internal_links = scrapy.Field()  # type: List[str]

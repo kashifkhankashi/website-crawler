@@ -89,6 +89,334 @@ function displayAllSections(data) {
     displaySimilarity(data);
     displayExternalLinks(data);
     displayStatistics(data);
+    displayImageAnalyzer(data);
+    displayKeywords(data);
+    setupKeywordSearch(data);
+}
+
+// Image analyzer section
+function displayImageAnalyzer(data) {
+    const missingAltContainer = document.getElementById('missingAltContainer');
+    const largeImagesContainer = document.getElementById('largeImagesContainer');
+    const duplicateImagesContainer = document.getElementById('duplicateImagesContainer');
+
+    if (!missingAltContainer || !largeImagesContainer || !duplicateImagesContainer) return;
+
+    const analysis = data.image_analysis || {};
+
+    // Missing ALT text
+    const missingAlt = analysis.missing_alt || [];
+    if (missingAlt.length === 0) {
+        missingAltContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No images with missing ALT text were found.</p></div>';
+    } else {
+        let html = '<ul class="image-list">';
+        missingAlt.slice(0, 200).forEach(item => {
+            html += `
+                <li>
+                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a></div>
+                    <div><strong>Page:</strong> <a href="${item.page_url}" target="_blank">${item.page_title || item.page_url}</a></div>
+                </li>
+            `;
+        });
+        if (missingAlt.length > 200) {
+            html += `<li><em>... and ${missingAlt.length - 200} more</em></li>`;
+        }
+        html += '</ul>';
+        missingAltContainer.innerHTML = html;
+    }
+
+    // Large images
+    const largeImages = analysis.large_images || [];
+    if (largeImages.length === 0) {
+        largeImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large images detected (based on Content-Length).</p></div>';
+    } else {
+        let html = '<ul class="image-list">';
+        largeImages.forEach(item => {
+            const sizeKb = (item.size_bytes / 1024).toFixed(1);
+            html += `
+                <li>
+                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a> (${sizeKb} KB)</div>
+                    <div><strong>Used on:</strong>
+                        <ul>
+                            ${item.pages.slice(0, 5).map(p => `
+                                <li><a href="${p.page_url}" target="_blank">${p.page_title || p.page_url}</a></li>
+                            `).join('')}
+                            ${item.pages.length > 5 ? `<li><em>... and ${item.pages.length - 5} more pages</em></li>` : ''}
+                        </ul>
+                    </div>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        largeImagesContainer.innerHTML = html;
+    }
+
+    // Duplicate images
+    const duplicateImages = analysis.duplicate_images || [];
+    if (duplicateImages.length === 0) {
+        duplicateImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate image usage detected across pages.</p></div>';
+    } else {
+        let html = '<ul class="image-list">';
+        duplicateImages.forEach(item => {
+            html += `
+                <li>
+                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a></div>
+                    <div><strong>Used on ${item.pages.length} pages:</strong>
+                        <ul>
+                            ${item.pages.slice(0, 8).map(p => `
+                                <li><a href="${p.page_url}" target="_blank">${p.page_title || p.page_url}</a></li>
+                            `).join('')}
+                            ${item.pages.length > 8 ? `<li><em>... and ${item.pages.length - 8} more pages</em></li>` : ''}
+                        </ul>
+                    </div>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        duplicateImagesContainer.innerHTML = html;
+    }
+}
+
+// Display keyword analysis section
+function displayKeywords(data) {
+    const tbody = document.getElementById('keywordsTableBody');
+    const detailsContainer = document.getElementById('keywordPageDetails');
+    const pageFilter = document.getElementById('keywordPageFilter');
+    const searchInput = document.getElementById('keywordSearchInput');
+
+    if (!tbody || !detailsContainer || !pageFilter || !searchInput) return;
+
+    const keywordAnalysis = data.keyword_analysis || {};
+    const globalTop = keywordAnalysis.global_top_keywords || [];
+
+    // Populate global keyword table
+    if (globalTop.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">No keyword data available. Try running a new crawl.</td></tr>';
+    } else {
+        tbody.innerHTML = '';
+        globalTop.forEach(k => {
+            const tr = document.createElement('tr');
+            tr.dataset.keyword = k.keyword.toLowerCase();
+            tr.innerHTML = `
+                <td>${k.keyword}</td>
+                <td>${k.doc_count}</td>
+                <td>${k.total_count}</td>
+                <td>${k.idf.toFixed(4)}</td>
+            `;
+            tr.onclick = () => showKeywordPages(k.keyword, data);
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Populate page filter
+    if (data.pages) {
+        data.pages.forEach(page => {
+            const option = document.createElement('option');
+            option.value = page.url;
+            option.textContent = page.title || page.url;
+            pageFilter.appendChild(option);
+        });
+    }
+
+    // Filter logic
+    const applyFilter = () => {
+        const term = searchInput.value.toLowerCase();
+        const selectedPage = pageFilter.value;
+
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            let show = true;
+            const keyword = row.dataset.keyword || '';
+
+            if (term && !keyword.includes(term)) {
+                show = false;
+            }
+
+            if (selectedPage !== 'all' && show && data.pages) {
+                // Only show keywords that appear on selected page
+                const page = data.pages.find(p => p.url === selectedPage);
+                if (!page || !page.keywords || !page.keywords.top_keywords) {
+                    show = false;
+                } else {
+                    const hasKeyword = page.keywords.top_keywords.some(k => k.keyword.toLowerCase() === keyword);
+                    if (!hasKeyword) show = false;
+                }
+            }
+
+            row.style.display = show ? '' : 'none';
+        });
+
+        // Clear details when filters change
+        detailsContainer.innerHTML = '';
+    };
+
+    searchInput.addEventListener('input', applyFilter);
+    pageFilter.addEventListener('change', applyFilter);
+}
+
+// Show pages where a given keyword appears, with ratios, in the keyword section
+function showKeywordPages(keyword, data) {
+    const container = document.getElementById('keywordPageDetails');
+    if (!container || !data.pages) return;
+
+    const lower = keyword.toLowerCase();
+    const pagesWithKeyword = [];
+
+    data.pages.forEach(page => {
+        if (page.keywords && page.keywords.top_keywords) {
+            const entry = page.keywords.top_keywords.find(k => k.keyword.toLowerCase() === lower);
+            if (entry) {
+                pagesWithKeyword.push({
+                    url: page.url,
+                    title: page.title,
+                    word_count: page.word_count,
+                    keyword_count: entry.count,
+                    tf_idf: entry.tf_idf,
+                    keyword_ratio: page.keywords.keyword_ratio
+                });
+            }
+        }
+    });
+
+    if (pagesWithKeyword.length === 0) {
+        container.innerHTML = `<p>No pages found using keyword "<strong>${keyword}</strong>".</p>`;
+        return;
+    }
+
+    // Sort pages by TF-IDF descending
+    pagesWithKeyword.sort((a, b) => b.tf_idf - a.tf_idf);
+
+    let html = `
+        <div class="keyword-detail-card">
+            <h3>Pages using "<span>${keyword}</span>"</h3>
+            <table class="keyword-pages-table">
+                <thead>
+                    <tr>
+                        <th>Page</th>
+                        <th>Word Count</th>
+                        <th>Keyword Count</th>
+                        <th>TF-IDF</th>
+                        <th>Keyword Ratio</th>
+                        <th>View</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    pagesWithKeyword.forEach(p => {
+        html += `
+            <tr>
+                <td>
+                    <a href="${p.url}" target="_blank">${p.title || p.url}</a>
+                </td>
+                <td>${p.word_count || 0}</td>
+                <td>${p.keyword_count}</td>
+                <td>${p.tf_idf.toFixed(4)}</td>
+                <td>${(p.keyword_ratio * 100).toFixed(1)}%</td>
+                <td>
+                    <button class="action-btn action-btn-view" data-url="${p.url}"><i class="fas fa-eye"></i></button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML = html;
+
+    // Wire up "View" buttons to open the existing page modal with full details
+    const buttons = container.querySelectorAll('button.action-btn-view');
+    buttons.forEach(btn => {
+        const url = btn.getAttribute('data-url');
+        const page = data.pages.find(p => p.url === url);
+        if (page) {
+            btn.onclick = () => showPageDetails(page);
+        }
+    });
+}
+
+// Advanced keyword search: user enters any keyword and sees counts per page
+function setupKeywordSearch(data) {
+    const input = document.getElementById('keywordSearchTermInput');
+    const btn = document.getElementById('keywordSearchBtn');
+    const tbody = document.getElementById('keywordSearchTableBody');
+    if (!input || !btn || !tbody || !data.pages) return;
+
+    const runSearch = () => {
+        const rawTerm = input.value || '';
+        const term = rawTerm.trim().toLowerCase();
+
+        if (!term) {
+            tbody.innerHTML = '<tr><td colspan="5">Please enter a keyword to search for.</td></tr>';
+            return;
+        }
+
+        const results = [];
+
+        data.pages.forEach(page => {
+            if (!page.keywords || !page.keywords.term_counts) return;
+            const count = page.keywords.term_counts[term] || 0;
+            if (count > 0) {
+                const wordCount = page.word_count || 0;
+                const pct = wordCount > 0 ? (count / wordCount) * 100 : 0;
+                results.push({
+                    url: page.url,
+                    title: page.title,
+                    count,
+                    wordCount,
+                    pct
+                });
+            }
+        });
+
+        if (results.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5">Keyword "<strong>${term}</strong>" was not found on any page.</td></tr>`;
+            return;
+        }
+
+        // Sort by count descending
+        results.sort((a, b) => b.count - a.count);
+
+        let html = '';
+        results.forEach(r => {
+            html += `
+                <tr>
+                    <td><a href="${r.url}" target="_blank">${r.title || r.url}</a></td>
+                    <td>${r.count}</td>
+                    <td>${r.wordCount}</td>
+                    <td>${r.pct.toFixed(2)}%</td>
+                    <td>
+                        <button class="action-btn action-btn-view" data-url="${r.url}">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+
+        // Wire "View" buttons to open modal with full details
+        const buttons = tbody.querySelectorAll('button.action-btn-view');
+        buttons.forEach(btnEl => {
+            const url = btnEl.getAttribute('data-url');
+            const page = data.pages.find(p => p.url === url);
+            if (page) {
+                btnEl.onclick = () => showPageDetails(page);
+            }
+        });
+    };
+
+    btn.addEventListener('click', runSearch);
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            runSearch();
+        }
+    });
 }
 
 // Display overview section
@@ -769,6 +1097,27 @@ function showPageDetails(page) {
     
     modalTitle.textContent = page.title || 'Page Details';
     
+    const keywordSection = (page.keywords && page.keywords.top_keywords && page.keywords.top_keywords.length > 0)
+        ? `
+        <div class="modal-section">
+            <h3><i class="fas fa-key"></i> Top Keywords</h3>
+            <p><strong>Keyword Coverage Ratio:</strong> ${(page.keywords.keyword_ratio * 100).toFixed(1)}%</p>
+            <ul class="modal-keywords">
+                ${page.keywords.top_keywords.slice(0, 15).map(k => `
+                    <li>
+                        <strong>${k.keyword}</strong>
+                        <span>- count: ${k.count}, TF-IDF: ${k.tf_idf.toFixed(4)}</span>
+                    </li>
+                `).join('')}
+            </ul>
+            ${page.keywords.missing_important_keywords && page.keywords.missing_important_keywords.length > 0 ? `
+                <p style="margin-top: 10px;"><strong>Missing important site keywords:</strong> 
+                    ${page.keywords.missing_important_keywords.slice(0, 10).join(', ')}
+                </p>
+            ` : ''}
+        </div>
+        ` : '';
+
     modalBody.innerHTML = `
         <div class="modal-section">
             <h3><i class="fas fa-link"></i> URL</h3>
@@ -836,6 +1185,8 @@ function showPageDetails(page) {
                 </ul>
             </div>
         ` : ''}
+        
+        ${keywordSection}
     `;
     
     modal.style.display = 'block';
@@ -961,6 +1312,19 @@ function generateTextReport(data) {
             report += `Status: ${page.status_code || 'Unknown'}\n`;
             report += `Word Count: ${page.word_count || 0}\n`;
             report += `Duplicate: ${page.is_exact_duplicate ? 'Yes' : 'No'}\n`;
+            
+            if (page.keywords && page.keywords.top_keywords && page.keywords.top_keywords.length > 0) {
+                report += `Keyword Coverage Ratio: ${((page.keywords.keyword_ratio || 0) * 100).toFixed(1)}%\n`;
+                report += `Top Keywords:\n`;
+                page.keywords.top_keywords.slice(0, 15).forEach(k => {
+                    const tfIdf = typeof k.tf_idf === 'number' ? k.tf_idf.toFixed(4) : k.tf_idf;
+                    report += `  - ${k.keyword} (count: ${k.count}, TF-IDF: ${tfIdf})\n`;
+                });
+                if (page.keywords.missing_important_keywords && page.keywords.missing_important_keywords.length > 0) {
+                    report += `Missing Important Site Keywords: ${page.keywords.missing_important_keywords.slice(0, 10).join(', ')}\n`;
+                }
+            }
+
             if (page.broken_links && page.broken_links.length > 0) {
                 report += `Broken Links: ${page.broken_links.length}\n`;
             }
