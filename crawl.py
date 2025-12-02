@@ -28,6 +28,29 @@ from scrapy.http import Request
 
 from crawler.spiders.site_spider import SiteSpider
 
+# Import SEO scorer (optional)
+try:
+    import sys
+    import os as os_module
+    current_dir = os_module.path.dirname(os_module.path.abspath(__file__))
+    sys.path.insert(0, current_dir)
+    from seo_scorer import SEOScorer
+    SEO_SCORER_AVAILABLE = True
+except ImportError:
+    SEO_SCORER_AVAILABLE = False
+    SEOScorer = None
+    # Silently fail - SEO scoring is optional
+
+# Import advanced analyzers (optional)
+try:
+    from advanced_seo_analyzer import AdvancedSEOAnalyzer
+    from dom_analyzer import DOMAnalyzer
+    ADVANCED_ANALYZERS_AVAILABLE = True
+except ImportError:
+    ADVANCED_ANALYZERS_AVAILABLE = False
+    AdvancedSEOAnalyzer = None
+    DOMAnalyzer = None
+
 
 class BrokenLinkChecker:
     """
@@ -180,6 +203,35 @@ class ReportGenerator:
         image_analysis = self._analyze_images(items)
         report_data['image_analysis'] = image_analysis
         
+        # Calculate SEO scores if scorer is available
+        seo_scorer = None
+        try:
+            # Check if SEO_SCORER_AVAILABLE is defined
+            if 'SEO_SCORER_AVAILABLE' in globals():
+                if SEO_SCORER_AVAILABLE and 'SEOScorer' in globals():
+                    seo_scorer = SEOScorer()
+                else:
+                    # Try direct import as fallback
+                    try:
+                        from seo_scorer import SEOScorer
+                        seo_scorer = SEOScorer()
+                    except ImportError:
+                        pass
+            else:
+                # SEO_SCORER_AVAILABLE not defined, try direct import
+                try:
+                    from seo_scorer import SEOScorer
+                    seo_scorer = SEOScorer()
+                except ImportError:
+                    pass
+        except (NameError, ImportError, Exception) as e:
+            # SEO scorer not available - this is optional, fail silently
+            seo_scorer = None
+        
+        # Detect orphan pages (pages with no internal links pointing to them)
+        orphan_pages = self._detect_orphan_pages(items)
+        report_data['orphan_pages'] = orphan_pages
+        
         for item in items:
             url = item['url']
             
@@ -230,14 +282,59 @@ class ReportGenerator:
                 'similarity_scores': similarity_scores,
                 'content_hash': item.get('content_hash', ''),
                 'crawled_at': item.get('crawled_at', ''),
-                'performance_analysis': item.get('performance_analysis', {})  # Include performance analysis
+                'performance_analysis': item.get('performance_analysis', {}),  # Include performance analysis
+                'html_content': item.get('html_content', '')  # Include HTML for advanced analysis
             }
 
             # Attach per-page keyword stats if available
             if url in page_keyword_map:
                 page_data['keywords'] = page_keyword_map[url]
             
+            # Calculate SEO score for this page
+            if seo_scorer:
+                try:
+                    seo_score = seo_scorer.calculate_page_score(page_data)
+                    page_data['seo_score'] = seo_score
+                except Exception as e:
+                    print(f"Warning: SEO score calculation failed for {url}: {e}")
+            
+            # Add content quality metrics
+            content_quality = self._calculate_content_quality(page_data)
+            page_data['content_quality'] = content_quality
+            
+            # Advanced SEO audit
+            if ADVANCED_ANALYZERS_AVAILABLE and AdvancedSEOAnalyzer:
+                try:
+                    seo_analyzer = AdvancedSEOAnalyzer()
+                    # Get HTML content if available (stored in item)
+                    html_content = item.get('html_content', '')
+                    seo_audit = seo_analyzer.analyze_page(page_data, html_content)
+                    page_data['advanced_seo_audit'] = seo_audit
+                except Exception as e:
+                    print(f"Warning: Advanced SEO audit failed for {url}: {e}")
+            
+            # DOM analysis
+            if ADVANCED_ANALYZERS_AVAILABLE and DOMAnalyzer:
+                try:
+                    dom_analyzer = DOMAnalyzer()
+                    html_content = item.get('html_content', '')
+                    if html_content:
+                        dom_analysis = dom_analyzer.analyze(html_content)
+                        page_data['dom_analysis'] = dom_analysis
+                except Exception as e:
+                    print(f"Warning: DOM analysis failed for {url}: {e}")
+            
             report_data['pages'].append(page_data)
+        
+        # Calculate site-wide SEO score
+        if seo_scorer:
+            try:
+                site_score = seo_scorer.calculate_site_score(report_data['pages'])
+                report_data['site_seo_score'] = site_score
+            except Exception as e:
+                print(f"Warning: Site SEO score calculation failed: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Save JSON report
         json_path = os.path.join(self.output_dir, 'report.json')
@@ -560,6 +657,136 @@ class ReportGenerator:
                 f.write(f"{item['url']}\n")
         
         print(f"✓ Sitemap saved to: {sitemap_path}")
+    
+    def _detect_orphan_pages(self, items: List[dict]) -> List[str]:
+        """
+        Detect orphan pages - pages that have no internal links pointing to them.
+        
+        Args:
+            items: List of crawled page items
+            
+        Returns:
+            List of orphan page URLs
+        """
+        if not items:
+            return []
+        
+        # Collect all URLs that are linked to
+        linked_urls = set()
+        all_urls = set()
+        
+        for item in items:
+            url = item.get('url')
+            if url:
+                all_urls.add(url)
+            
+            # Add all internal links
+            for link in item.get('internal_links', []):
+                linked_urls.add(link)
+        
+        # Orphan pages are pages that exist but are never linked to
+        # (except the start page which might not be linked to)
+        orphan_pages = []
+        for url in all_urls:
+            if url not in linked_urls:
+                orphan_pages.append(url)
+        
+        return orphan_pages
+    
+    def _calculate_content_quality(self, page: Dict) -> Dict:
+        """
+        Calculate content quality metrics.
+        
+        Returns:
+            Dictionary with readability score, thin content flag, etc.
+        """
+        word_count = page.get('word_count', 0)
+        text_content = page.get('text_content', '')
+        
+        quality = {
+            'word_count': word_count,
+            'is_thin_content': word_count < 300,
+            'readability_score': None,
+            'readability_grade': None,
+            'content_length_status': self._get_content_length_status(word_count)
+        }
+        
+        # Calculate readability score (Flesch Reading Ease approximation)
+        if text_content and word_count > 0:
+            try:
+                readability = self._calculate_readability(text_content, word_count)
+                quality['readability_score'] = readability['score']
+                quality['readability_grade'] = readability['grade']
+            except:
+                pass
+        
+        return quality
+    
+    def _get_content_length_status(self, word_count: int) -> str:
+        """Get status based on content length."""
+        if word_count >= 1000:
+            return 'excellent'
+        elif word_count >= 500:
+            return 'good'
+        elif word_count >= 300:
+            return 'acceptable'
+        elif word_count > 0:
+            return 'thin'
+        else:
+            return 'empty'
+    
+    def _calculate_readability(self, text: str, word_count: int) -> Dict:
+        """
+        Calculate Flesch Reading Ease score (simplified version).
+        
+        Returns:
+            Dictionary with score and grade
+        """
+        if not text or word_count == 0:
+            return {'score': 0, 'grade': 'N/A'}
+        
+        # Count sentences (approximate)
+        sentences = len(re.findall(r'[.!?]+', text))
+        if sentences == 0:
+            sentences = 1
+        
+        # Count syllables (approximate - count vowel groups)
+        syllables = len(re.findall(r'[aeiouy]+', text.lower()))
+        if syllables == 0:
+            syllables = word_count
+        
+        # Average sentence length
+        avg_sentence_length = word_count / sentences if sentences > 0 else 0
+        
+        # Average syllables per word
+        avg_syllables = syllables / word_count if word_count > 0 else 0
+        
+        # Simplified Flesch Reading Ease formula
+        # Score = 206.835 - (1.015 * ASL) - (84.6 * ASW)
+        # Where ASL = average sentence length, ASW = average syllables per word
+        score = 206.835 - (1.015 * avg_sentence_length) - (84.6 * avg_syllables)
+        score = max(0, min(100, score))
+        
+        # Convert to grade level
+        if score >= 90:
+            grade = 'Very Easy (5th grade)'
+        elif score >= 80:
+            grade = 'Easy (6th grade)'
+        elif score >= 70:
+            grade = 'Fairly Easy (7th grade)'
+        elif score >= 60:
+            grade = 'Standard (8th-9th grade)'
+        elif score >= 50:
+            grade = 'Fairly Difficult (10th-12th grade)'
+        elif score >= 30:
+            grade = 'Difficult (College)'
+        else:
+            grade = 'Very Difficult (College Graduate)'
+        
+        return {
+            'score': round(score, 1),
+            'grade': grade
+        }
 
 
 class CrawlerRunner:
@@ -663,9 +890,28 @@ ItemStoragePipeline.clear()
 def update_progress():
     items = ItemStoragePipeline.get_collected_items()
     links = ItemStoragePipeline.get_collected_links()
+    
+    # Calculate internal vs external links
+    internal_count = 0
+    external_count = 0
+    current_page_url = ""
+    
+    if items:
+        last_item = items[-1]
+        current_page_url = last_item.get("url", "")
+        internal_count = len(last_item.get("internal_links", []))
+        external_count = len(last_item.get("external_links", []))
+    
+    # Count total internal/external across all pages
+    total_internal = sum(len(item.get("internal_links", [])) for item in items)
+    total_external = sum(len(item.get("external_links", [])) for item in items)
+    
     progress_data = {{
         "pages_crawled": len(items),
         "links_found": len(links),
+        "internal_links": total_internal,
+        "external_links": total_external,
+        "current_page": current_page_url,
         "timestamp": time.time()
     }}
     try:

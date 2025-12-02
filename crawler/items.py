@@ -43,4 +43,5 @@ class PageItem(scrapy.Item):
     
     # Performance analysis
     performance_analysis = scrapy.Field()  # type: Dict  # Performance analysis results
+    html_content = scrapy.Field()  # type: Optional[str]  # Raw HTML content for advanced analysis
 

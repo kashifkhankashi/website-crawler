@@ -71,6 +71,15 @@
                         <p>External Links</p>
                     </div>
                 </div>
+                <div class="summary-card" onclick="showSection('advanced-seo')">
+                    <div class="card-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <i class="fas fa-clipboard-check"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="siteSeoScore">-</h3>
+                        <p>SEO Audit Score</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Tabs Navigation -->
@@ -107,6 +116,15 @@
                 </button>
                 <button class="tab-btn" onclick="showSection('performance')">
                     <i class="fas fa-tachometer-alt"></i> Performance
+                </button>
+                <button class="tab-btn" onclick="showSection('orphan-pages')">
+                    <i class="fas fa-unlink"></i> Orphan Pages
+                </button>
+                <button class="tab-btn" onclick="showSection('advanced-seo')">
+                    <i class="fas fa-clipboard-check"></i> Advanced SEO Audit
+                </button>
+                <button class="tab-btn" onclick="showSection('dom-analysis')">
+                    <i class="fas fa-sitemap"></i> DOM Analysis
                 </button>
             </div>
 
@@ -200,7 +218,7 @@
                         <h2><i class="fas fa-external-link-alt"></i> External Links</h2>
                         <span class="badge badge-info" id="externalLinksCount">0 links</span>
                     </div>
-                    <div class="section-actions">
+                    <div class="section-actions" style="margin-bottom: 16px;">
                         <input type="text" id="externalSearchInput" placeholder="Search external links..." class="search-box">
                         <select id="externalPageFilter" class="filter-select">
                             <option value="all">All Pages</option>
@@ -422,6 +440,32 @@
                 </div>
             </section>
 
+            <!-- Advanced SEO Audit Section -->
+            <section id="advanced-seo-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-clipboard-check"></i> Advanced SEO Audit</h2>
+                        <p class="section-description">Comprehensive on-page SEO analysis with detailed recommendations</p>
+                    </div>
+                    <div id="advancedSeoContainer">
+                        <p class="loading">Loading advanced SEO audit...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DOM Analysis Section -->
+            <section id="dom-analysis-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-sitemap"></i> DOM Analysis</h2>
+                        <p class="section-description">DOM structure complexity and performance analysis</p>
+                    </div>
+                    <div id="domAnalysisContainer">
+                        <p class="loading">Loading DOM analysis...</p>
+                    </div>
+                </div>
+            </section>
+
             <!-- Download Actions -->
             <div class="card">
                 <div class="section-header">
@@ -453,6 +497,19 @@
                 <span class="close" onclick="closeModal()">&times;</span>
             </div>
             <div class="modal-body" id="modalBody">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Similar Content Modal -->
+    <div id="similarContentModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2><i class="fas fa-copy"></i> Similar Content Comparison</h2>
+                <span class="close" onclick="closeSimilarContentModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="similarContentModalBody">
                 <!-- Content will be loaded here -->
             </div>
         </div>

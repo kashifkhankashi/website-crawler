@@ -94,6 +94,18 @@ function displayAllSections(data) {
     setupKeywordSearch(data);
     displayMetaSeo(data);
     displayPerformanceAnalysis(data);
+    displayOrphanPages(data);
+    displayAdvancedSEO(data);
+    displayDOMAnalysis(data);
+    // Update SEO score in summary card from Advanced SEO Audit
+    updateSeoScoreSummary(data);
+    
+    // Debug: Log data to console
+    console.log('Loaded data:', {
+        totalPages: data.pages ? data.pages.length : 0,
+        hasPages: !!data.pages,
+        pagesArray: data.pages ? data.pages.length : 'no pages'
+    });
 }
 
 // Meta tag & on-page SEO analysis section
@@ -569,39 +581,71 @@ function setupKeywordSearch(data) {
 function displayOverview(data) {
     // Update summary cards
     const totalPages = data.pages ? data.pages.length : 0;
-    document.getElementById('totalPages').textContent = totalPages;
+    const totalPagesEl = document.getElementById('totalPages');
+    if (totalPagesEl) {
+        totalPagesEl.textContent = totalPages;
+    }
     
-    const uniquePages = data.pages ? data.pages.filter(p => !p.is_exact_duplicate).length : 0;
-    
-    const duplicatePages = data.pages ? data.pages.filter(p => p.is_exact_duplicate).length : 0;
-    document.getElementById('duplicatePages').textContent = duplicatePages;
-    
+    // Update broken links count
     let brokenLinksCount = 0;
-    let similarPairsCount = 0;
     if (data.pages) {
         data.pages.forEach(page => {
             brokenLinksCount += page.broken_links ? page.broken_links.length : 0;
+        });
+    }
+    const brokenLinksEl = document.getElementById('brokenLinks');
+    if (brokenLinksEl) {
+        brokenLinksEl.textContent = brokenLinksCount;
+    }
+    
+    // Update duplicate pages count
+    const duplicatePages = data.pages ? data.pages.filter(p => p.is_exact_duplicate).length : 0;
+    const duplicatePagesEl = document.getElementById('duplicatePages');
+    if (duplicatePagesEl) {
+        duplicatePagesEl.textContent = duplicatePages;
+    }
+    
+    // Update similar pages count
+    let similarPairsCount = 0;
+    if (data.pages) {
+        data.pages.forEach(page => {
             if (page.similarity_scores && Object.keys(page.similarity_scores).length > 0) {
                 similarPairsCount += Object.keys(page.similarity_scores).length;
             }
         });
     }
-    document.getElementById('brokenLinks').textContent = brokenLinksCount;
-    document.getElementById('similarPages').textContent = Math.floor(similarPairsCount / 2); // Divide by 2 since each pair is counted twice
+    const similarPagesEl = document.getElementById('similarPages');
+    if (similarPagesEl) {
+        similarPagesEl.textContent = Math.floor(similarPairsCount / 2); // Divide by 2 since each pair is counted twice
+    }
+    
+    // Update external links count
+    let externalLinksTotal = 0;
+    if (data.pages) {
+        data.pages.forEach(page => {
+            externalLinksTotal += page.external_links ? page.external_links.length : 0;
+        });
+    }
+    const externalLinksEl = document.getElementById('externalLinksTotal');
+    if (externalLinksEl) {
+        externalLinksEl.textContent = externalLinksTotal;
+    }
     
     // Populate table
     const tbody = document.getElementById('resultsTableBody');
-    tbody.innerHTML = '';
-    
-    if (!data.pages || data.pages.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8">No pages found</td></tr>';
-        return;
+    if (tbody) {
+        tbody.innerHTML = '';
+        
+        if (!data.pages || data.pages.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8">No pages found</td></tr>';
+            return;
+        }
+        
+        data.pages.forEach((page, index) => {
+            const row = createTableRow(page, index);
+            tbody.appendChild(row);
+        });
     }
-    
-    data.pages.forEach((page, index) => {
-        const row = createTableRow(page, index);
-        tbody.appendChild(row);
-    });
 }
 
 // Display broken links section
@@ -743,9 +787,11 @@ function displaySimilarity(data) {
                             url1: page.url,
                             title1: page.title,
                             word_count1: page.word_count,
+                            text_content1: page.text_content || '',
                             url2: otherUrl,
                             title2: otherPage ? otherPage.title : '',
                             word_count2: otherPage ? otherPage.word_count : 0,
+                            text_content2: otherPage ? (otherPage.text_content || '') : '',
                             similarity: similarity
                         });
                     }
@@ -765,9 +811,10 @@ function displaySimilarity(data) {
     }
     
     container.innerHTML = '';
-    similarityPairs.forEach(pair => {
+    similarityPairs.forEach((pair, index) => {
         const pairDiv = document.createElement('div');
         pairDiv.className = 'similarity-pair';
+        pairDiv.dataset.pairIndex = index;
         
         const similarityClass = pair.similarity >= 90 ? 'similarity-high' : 
                                pair.similarity >= 70 ? 'similarity-medium' : 'similarity-low';
@@ -796,7 +843,27 @@ function displaySimilarity(data) {
                     </div>
                 </div>
             </div>
+            <div class="similarity-pair-actions">
+                <button class="btn btn-primary btn-sm view-similar-btn" data-pair-index="${index}">
+                    <i class="fas fa-eye"></i> View Similar Words
+                </button>
+            </div>
         `;
+        
+        // Store pair data globally for access
+        if (!window.similarityPairsData) {
+            window.similarityPairsData = [];
+        }
+        window.similarityPairsData[index] = pair;
+        
+        // Wire up button click
+        const btn = pairDiv.querySelector('.view-similar-btn');
+        if (btn) {
+            btn.addEventListener('click', () => {
+                showSimilarContentModal(pair);
+            });
+        }
+        
         container.appendChild(pairDiv);
     });
 }
@@ -1333,6 +1400,54 @@ function showPageDetails(page) {
         ` : ''}
         
         ${keywordSection}
+        
+        ${page.seo_score ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-star"></i> SEO Score: ${page.seo_score.score}/100 (Grade ${page.seo_score.grade})</h3>
+                <div class="seo-score-breakdown">
+                    <h4>Score Breakdown:</h4>
+                    <ul class="score-breakdown-list">
+                        <li>Title Tag: ${page.seo_score.breakdown?.title || 0}/15</li>
+                        <li>Meta Description: ${page.seo_score.breakdown?.meta_description || 0}/10</li>
+                        <li>Content Quality: ${page.seo_score.breakdown?.content_quality || 0}/20</li>
+                        <li>Headings: ${page.seo_score.breakdown?.headings || 0}/10</li>
+                        <li>Internal Links: ${page.seo_score.breakdown?.internal_links || 0}/10</li>
+                        <li>Images: ${page.seo_score.breakdown?.images || 0}/10</li>
+                        <li>Technical SEO: ${page.seo_score.breakdown?.technical_seo || 0}/10</li>
+                        <li>Performance: ${page.seo_score.breakdown?.performance || 0}/10</li>
+                        ${page.seo_score.breakdown?.broken_links_penalty ? `<li style="color: #dc3545;">Broken Links Penalty: -${Math.abs(page.seo_score.breakdown.broken_links_penalty)}</li>` : ''}
+                    </ul>
+                </div>
+                ${page.seo_score.recommendations && page.seo_score.recommendations.length > 0 ? `
+                    <div class="seo-recommendations">
+                        <h4>Recommendations:</h4>
+                        <ul class="recommendations-list">
+                            ${page.seo_score.recommendations.slice(0, 15).map(rec => {
+                                const priorityClass = rec.priority || 'medium';
+                                const priorityIcon = priorityClass === 'critical' ? '🔴' : priorityClass === 'high' ? '🟠' : priorityClass === 'medium' ? '🟡' : '🔵';
+                                return `
+                                <li class="recommendation-${priorityClass}">
+                                    <strong>${priorityIcon} ${priorityClass.toUpperCase()}:</strong> ${rec.message}
+                                </li>
+                            `;
+                            }).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+            </div>
+        ` : ''}
+        
+        ${page.content_quality ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-file-alt"></i> Content Quality</h3>
+                <p><strong>Word Count:</strong> ${page.content_quality.word_count || 0}</p>
+                <p><strong>Content Length Status:</strong> <span class="badge badge-${page.content_quality.content_length_status === 'excellent' ? 'success' : page.content_quality.content_length_status === 'good' ? 'info' : page.content_quality.content_length_status === 'thin' ? 'warning' : 'danger'}">${page.content_quality.content_length_status || 'unknown'}</span></p>
+                ${page.content_quality.is_thin_content ? '<p style="color: #dc3545; font-weight: 600;"><strong>⚠️ Thin Content Warning:</strong> This page has less than 300 words. Consider adding more valuable content.</p>' : ''}
+                ${page.content_quality.readability_score !== null ? `
+                    <p><strong>Readability Score:</strong> ${page.content_quality.readability_score} (${page.content_quality.readability_grade || 'N/A'})</p>
+                ` : ''}
+            </div>
+        ` : ''}
     `;
     
     modal.style.display = 'block';
@@ -1341,6 +1456,223 @@ function showPageDetails(page) {
 // Close modal
 function closeModal() {
     document.getElementById('pageModal').style.display = 'none';
+}
+
+// Show similar content modal
+function showSimilarContentModal(pair) {
+    const modal = document.getElementById('similarContentModal');
+    const modalBody = document.getElementById('similarContentModalBody');
+    
+    if (!modal || !modalBody) return;
+    
+    // Extract similar words/phrases
+    const similarContent = findSimilarContent(pair.text_content1, pair.text_content2);
+    
+    modalBody.innerHTML = `
+        <div class="similar-content-header">
+            <div class="similar-content-info">
+                <p><strong>Similarity:</strong> <span class="similarity-badge">${pair.similarity.toFixed(1)}%</span></p>
+            </div>
+        </div>
+        
+        <div class="similar-content-comparison">
+            <div class="similar-content-page">
+                <div class="similar-content-page-header">
+                    <h3><i class="fas fa-file-alt"></i> Page 1</h3>
+                    <div class="page-info">
+                        <a href="${pair.url1}" target="_blank">${pair.url1}</a>
+                        <p><strong>${pair.title1 || 'No Title'}</strong></p>
+                        <p>${pair.word_count1 || 0} words</p>
+                    </div>
+                </div>
+                <div class="similar-content-text">
+                    ${highlightSimilarText(pair.text_content1, similarContent.commonWords, similarContent.commonPhrases)}
+                </div>
+            </div>
+            
+            <div class="similar-content-page">
+                <div class="similar-content-page-header">
+                    <h3><i class="fas fa-file-alt"></i> Page 2</h3>
+                    <div class="page-info">
+                        <a href="${pair.url2}" target="_blank">${pair.url2}</a>
+                        <p><strong>${pair.title2 || 'No Title'}</strong></p>
+                        <p>${pair.word_count2 || 0} words</p>
+                    </div>
+                </div>
+                <div class="similar-content-text">
+                    ${highlightSimilarText(pair.text_content2, similarContent.commonWords, similarContent.commonPhrases)}
+                </div>
+            </div>
+        </div>
+        
+        <div class="similar-content-summary">
+            <h4><i class="fas fa-info-circle"></i> Similar Content Summary</h4>
+            <div class="summary-stats">
+                <div class="summary-stat">
+                    <strong>${similarContent.commonWords.length}</strong>
+                    <span>Common Words</span>
+                </div>
+                <div class="summary-stat">
+                    <strong>${similarContent.commonPhrases.length}</strong>
+                    <span>Common Phrases</span>
+                </div>
+                <div class="summary-stat">
+                    <strong>${similarContent.commonWordCount}</strong>
+                    <span>Total Common Word Count</span>
+                </div>
+            </div>
+            ${similarContent.commonWords.length > 0 ? `
+                <div class="common-words-list">
+                    <h5>Most Common Words:</h5>
+                    <div class="words-tags">
+                        ${similarContent.commonWords.slice(0, 30).map(word => `
+                            <span class="word-tag">${word.word} (${word.count})</span>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            ${similarContent.commonPhrases.length > 0 ? `
+                <div class="common-phrases-list">
+                    <h5>Common Phrases:</h5>
+                    <ul>
+                        ${similarContent.commonPhrases.slice(0, 20).map(phrase => `
+                            <li>"${phrase}"</li>
+                        `).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Close similar content modal
+function closeSimilarContentModal() {
+    document.getElementById('similarContentModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const pageModal = document.getElementById('pageModal');
+    const similarModal = document.getElementById('similarContentModal');
+    
+    if (event.target === pageModal) {
+        closeModal();
+    }
+    if (event.target === similarModal) {
+        closeSimilarContentModal();
+    }
+}
+
+// Find similar content between two texts
+function findSimilarContent(text1, text2) {
+    if (!text1 || !text2) {
+        return { commonWords: [], commonPhrases: [], commonWordCount: 0 };
+    }
+    
+    // Normalize texts
+    const normalize = (text) => text.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    
+    const normalized1 = normalize(text1);
+    const normalized2 = normalize(text2);
+    
+    // Extract words
+    const words1 = normalized1.split(/\s+/).filter(w => w.length > 2);
+    const words2 = normalized2.split(/\s+/).filter(w => w.length > 2);
+    
+    // Count word frequencies
+    const countWords = (words) => {
+        const counts = {};
+        words.forEach(word => {
+            counts[word] = (counts[word] || 0) + 1;
+        });
+        return counts;
+    };
+    
+    const counts1 = countWords(words1);
+    const counts2 = countWords(words2);
+    
+    // Find common words
+    const commonWords = [];
+    const allWords = new Set([...Object.keys(counts1), ...Object.keys(counts2)]);
+    
+    allWords.forEach(word => {
+        if (counts1[word] && counts2[word]) {
+            commonWords.push({
+                word: word,
+                count: Math.min(counts1[word], counts2[word])
+            });
+        }
+    });
+    
+    // Sort by frequency
+    commonWords.sort((a, b) => b.count - a.count);
+    
+    // Find common phrases (2-4 word phrases)
+    const extractPhrases = (text, length) => {
+        const words = text.split(/\s+/);
+        const phrases = [];
+        for (let i = 0; i <= words.length - length; i++) {
+            phrases.push(words.slice(i, i + length).join(' '));
+        }
+        return phrases;
+    };
+    
+    const commonPhrases = [];
+    for (let len = 4; len >= 2; len--) {
+        const phrases1 = extractPhrases(normalized1, len);
+        const phrases2 = extractPhrases(normalized2, len);
+        const phrases1Set = new Set(phrases1);
+        
+        phrases2.forEach(phrase => {
+            if (phrases1Set.has(phrase) && phrase.length > 10) {
+                if (!commonPhrases.includes(phrase)) {
+                    commonPhrases.push(phrase);
+                }
+            }
+        });
+        
+        if (commonPhrases.length > 20) break; // Limit to avoid too many
+    }
+    
+    // Calculate total common word count
+    const commonWordCount = commonWords.reduce((sum, w) => sum + w.count, 0);
+    
+    return {
+        commonWords: commonWords,
+        commonPhrases: commonPhrases,
+        commonWordCount: commonWordCount
+    };
+}
+
+// Highlight similar text in content
+function highlightSimilarText(text, commonWords, commonPhrases) {
+    if (!text) return '<p class="text-muted">No content available</p>';
+    
+    let highlighted = text;
+    
+    // Highlight common phrases first (longer phrases)
+    commonPhrases.slice(0, 10).forEach(phrase => {
+        const regex = new RegExp(`(${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        highlighted = highlighted.replace(regex, '<mark class="similar-phrase">$1</mark>');
+    });
+    
+    // Highlight common words (but not if already in a highlighted phrase)
+    const topWords = commonWords.slice(0, 20).map(w => w.word);
+    topWords.forEach(word => {
+        // Only highlight if not already inside a mark tag
+        const regex = new RegExp(`(?<!<mark[^>]*>)(\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b)(?![^<]*</mark>)`, 'gi');
+        highlighted = highlighted.replace(regex, '<mark class="similar-word">$1</mark>');
+    });
+    
+    // Preserve line breaks
+    highlighted = highlighted.replace(/\n/g, '<br>');
+    
+    return `<div class="highlighted-content">${highlighted}</div>`;
 }
 
 // Filter table
@@ -1724,4 +2056,684 @@ function displayPerformanceAnalysis(data) {
         html += '</ul>';
         renderBlockingContainer.innerHTML = html;
     }
+}
+
+// Update SEO Score in summary card from Advanced SEO Audit
+function updateSeoScoreSummary(data) {
+    const siteSeoScore = document.getElementById('siteSeoScore');
+    if (!siteSeoScore || !data.pages) return;
+    
+    // Calculate average from Advanced SEO Audit
+    const pagesWithAudit = data.pages.filter(p => p.advanced_seo_audit);
+    if (pagesWithAudit.length > 0) {
+        const totalScore = pagesWithAudit.reduce((sum, p) => sum + (p.advanced_seo_audit?.overall_score || 0), 0);
+        const avgScore = Math.round(totalScore / pagesWithAudit.length);
+        siteSeoScore.textContent = avgScore;
+    } else {
+        // Fallback to old SEO Score if available
+        if (data.site_seo_score && data.site_seo_score.score) {
+            siteSeoScore.textContent = data.site_seo_score.score;
+        } else {
+            siteSeoScore.textContent = 'N/A';
+        }
+    }
+}
+
+// Display orphan pages section
+function displayOrphanPages(data) {
+    const container = document.getElementById('orphanPagesContainer');
+    const countBadge = document.getElementById('orphanPagesCount');
+    
+    if (!container) return;
+    
+    const orphanPages = data.orphan_pages || [];
+    const orphanCount = orphanPages.length;
+    
+    if (countBadge) {
+        countBadge.textContent = `${orphanCount} found`;
+    }
+    
+    if (orphanCount === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No orphan pages found! All pages are linked internally.</p></div>';
+        return;
+    }
+    
+    // Find page details for orphan pages
+    const orphanPageDetails = [];
+    orphanPages.forEach(url => {
+        const page = data.pages?.find(p => p.url === url);
+        if (page) {
+            orphanPageDetails.push({
+                url: page.url,
+                title: page.title,
+                word_count: page.word_count,
+                status_code: page.status_code,
+                internal_links: (page.internal_links || []).length,
+                seo_score: page.seo_score?.score
+            });
+        } else {
+            orphanPageDetails.push({
+                url: url,
+                title: 'Unknown',
+                word_count: 0,
+                status_code: 0,
+                internal_links: 0,
+                seo_score: null
+            });
+        }
+    });
+    
+    let html = `
+        <div class="orphan-pages-info">
+            <p><strong>Orphan pages</strong> are pages that have no internal links pointing to them. 
+            These pages are harder for search engines to discover and may not be indexed.</p>
+        </div>
+        <div class="table-container">
+            <table id="orphanPagesTable">
+                <thead>
+                    <tr>
+                        <th>Page URL</th>
+                        <th>Title</th>
+                        <th>Word Count</th>
+                        <th>Status</th>
+                        <th>SEO Score</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    orphanPageDetails.forEach(page => {
+        html += `
+            <tr>
+                <td><a href="${page.url}" target="_blank">${page.url}</a></td>
+                <td>${page.title || '-'}</td>
+                <td>${page.word_count || 0}</td>
+                <td>
+                    <span class="status-badge status-${page.status_code === 200 ? '200' : 'error'}">
+                        ${page.status_code || 'Unknown'}
+                    </span>
+                </td>
+                <td>
+                    ${page.seo_score !== null ? `<span class="score-badge">${page.seo_score}</span>` : 'N/A'}
+                </td>
+                <td>
+                    <button class="action-btn action-btn-view" data-url="${page.url}">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+        <div class="orphan-pages-suggestion">
+            <h4><i class="fas fa-lightbulb"></i> Recommendations:</h4>
+            <ul>
+                <li>Add internal links to orphan pages from your main navigation or related content</li>
+                <li>Include orphan pages in your XML sitemap</li>
+                <li>Create a "Site Map" page that links to all important pages</li>
+                <li>Add links to orphan pages from your homepage or category pages</li>
+            </ul>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Wire up view buttons
+    const viewButtons = container.querySelectorAll('button.action-btn-view');
+    viewButtons.forEach(btn => {
+        const url = btn.getAttribute('data-url');
+        const page = data.pages?.find(p => p.url === url);
+        if (page) {
+            btn.onclick = () => showPageDetails(page);
+        }
+    });
+}
+
+// Display Advanced SEO Audit section
+function displayAdvancedSEO(data) {
+    const container = document.getElementById('advancedSeoContainer');
+    if (!container || !data.pages) return;
+    
+    // Filter pages with advanced SEO audit
+    const pagesWithAudit = data.pages.filter(p => p.advanced_seo_audit);
+    
+    if (pagesWithAudit.length === 0) {
+        container.innerHTML = '<div class="info-message"><i class="fas fa-info-circle"></i><p>Advanced SEO Audit data not available. Run a new crawl to generate audit reports.</p></div>';
+        return;
+    }
+    
+    // Calculate site-wide stats
+    const totalScore = pagesWithAudit.reduce((sum, p) => sum + (p.advanced_seo_audit?.overall_score || 0), 0);
+    const avgScore = Math.round(totalScore / pagesWithAudit.length);
+    const totalCritical = pagesWithAudit.reduce((sum, p) => sum + (p.advanced_seo_audit?.critical_issues?.length || 0), 0);
+    const totalWarnings = pagesWithAudit.reduce((sum, p) => sum + (p.advanced_seo_audit?.warnings?.length || 0), 0);
+    
+    let html = `
+        <div class="audit-summary">
+            <div class="audit-summary-cards">
+                <div class="audit-card">
+                    <div class="audit-card-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <div class="audit-card-content">
+                        <h3>${avgScore}</h3>
+                        <p>Average SEO Score</p>
+                    </div>
+                </div>
+                <div class="audit-card">
+                    <div class="audit-card-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="audit-card-content">
+                        <h3>${totalCritical}</h3>
+                        <p>Critical Issues</p>
+                    </div>
+                </div>
+                <div class="audit-card">
+                    <div class="audit-card-icon" style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="audit-card-content">
+                        <h3>${totalWarnings}</h3>
+                        <p>Warnings</p>
+                    </div>
+                </div>
+                <div class="audit-card">
+                    <div class="audit-card-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="audit-card-content">
+                        <h3>${pagesWithAudit.length}</h3>
+                        <p>Pages Audited</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="audit-table-section">
+            <h3>Page-by-Page SEO Audit</h3>
+            <div class="section-actions">
+                <select id="auditScoreFilter" class="filter-select">
+                    <option value="all">All Scores</option>
+                    <option value="90-100">Excellent (90-100)</option>
+                    <option value="80-89">Good (80-89)</option>
+                    <option value="70-79">Fair (70-79)</option>
+                    <option value="0-69">Poor (0-69)</option>
+                </select>
+                <select id="auditIssueFilter" class="filter-select">
+                    <option value="all">All Pages</option>
+                    <option value="critical">Has Critical Issues</option>
+                    <option value="warnings">Has Warnings</option>
+                </select>
+            </div>
+            <div class="table-container">
+                <table id="auditTable">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>SEO Score</th>
+                            <th>Title</th>
+                            <th>Meta Desc</th>
+                            <th>Headings</th>
+                            <th>Alt Tags</th>
+                            <th>Issues</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Populate table
+    const tbody = document.getElementById('auditTableBody');
+    if (!tbody) return;
+    
+    // Sort by score (lowest first to prioritize issues)
+    const sortedPages = [...pagesWithAudit].sort((a, b) => 
+        (a.advanced_seo_audit?.overall_score || 0) - (b.advanced_seo_audit?.overall_score || 0)
+    );
+    
+    sortedPages.forEach(page => {
+        const audit = page.advanced_seo_audit || {};
+        const titleAnalysis = audit.title_analysis || {};
+        const metaAnalysis = audit.meta_description_analysis || {};
+        const headingAnalysis = audit.heading_structure || {};
+        const altAnalysis = audit.alt_tags_analysis || {};
+        
+        const score = audit.overall_score || 0;
+        const scoreClass = score >= 90 ? 'excellent' : score >= 80 ? 'good' : score >= 70 ? 'fair' : 'poor';
+        const criticalCount = audit.critical_issues?.length || 0;
+        const warningsCount = audit.warnings?.length || 0;
+        
+        const tr = document.createElement('tr');
+        tr.dataset.score = score;
+        tr.dataset.hasCritical = criticalCount > 0 ? 'yes' : 'no';
+        tr.dataset.hasWarnings = warningsCount > 0 ? 'yes' : 'no';
+        
+        tr.innerHTML = `
+            <td><a href="${page.url}" target="_blank">${page.url.substring(0, 50)}${page.url.length > 50 ? '...' : ''}</a></td>
+            <td>
+                <span class="score-badge score-${scoreClass}">${score}</span>
+            </td>
+            <td>
+                ${titleAnalysis.is_optimal ? '<span class="badge badge-success">✓</span>' : '<span class="badge badge-warning">⚠</span>'}
+                ${titleAnalysis.length || 0} chars
+            </td>
+            <td>
+                ${metaAnalysis.is_optimal ? '<span class="badge badge-success">✓</span>' : '<span class="badge badge-warning">⚠</span>'}
+                ${metaAnalysis.length || 0} chars
+            </td>
+            <td>
+                H1: ${headingAnalysis.h1_count || 0}, H2: ${headingAnalysis.h2_count || 0}
+                ${headingAnalysis.is_valid ? '<span class="badge badge-success">✓</span>' : '<span class="badge badge-danger">✗</span>'}
+            </td>
+            <td>
+                ${altAnalysis.alt_coverage || 0}% coverage
+                ${altAnalysis.alt_coverage === 100 ? '<span class="badge badge-success">✓</span>' : '<span class="badge badge-warning">⚠</span>'}
+            </td>
+            <td>
+                ${criticalCount > 0 ? `<span class="badge badge-danger">${criticalCount} Critical</span>` : ''}
+                ${warningsCount > 0 ? `<span class="badge badge-warning">${warningsCount} Warnings</span>` : ''}
+                ${criticalCount === 0 && warningsCount === 0 ? '<span class="badge badge-success">No Issues</span>' : ''}
+            </td>
+            <td>
+                <button class="action-btn action-btn-view" data-url="${page.url}">
+                    <i class="fas fa-eye"></i> View Details
+                </button>
+            </td>
+        `;
+        
+        // Wire up view button
+        const viewBtn = tr.querySelector('button.action-btn-view');
+        if (viewBtn) {
+            viewBtn.onclick = () => showAdvancedSEODetails(page);
+        }
+        
+        tbody.appendChild(tr);
+    });
+    
+    // Setup filters
+    const scoreFilter = document.getElementById('auditScoreFilter');
+    const issueFilter = document.getElementById('auditIssueFilter');
+    
+    const applyFilters = () => {
+        const scoreRange = scoreFilter.value;
+        const issueType = issueFilter.value;
+        
+        tbody.querySelectorAll('tr').forEach(tr => {
+            const pageScore = parseInt(tr.dataset.score) || 0;
+            const hasCritical = tr.dataset.hasCritical === 'yes';
+            const hasWarnings = tr.dataset.hasWarnings === 'yes';
+            
+            let show = true;
+            
+            // Score filter
+            if (scoreRange !== 'all') {
+                const [min, max] = scoreRange.split('-').map(Number);
+                show = show && (pageScore >= min && pageScore <= max);
+            }
+            
+            // Issue filter
+            if (issueType === 'critical') {
+                show = show && hasCritical;
+            } else if (issueType === 'warnings') {
+                show = show && hasWarnings;
+            }
+            
+            tr.style.display = show ? '' : 'none';
+        });
+    };
+    
+    if (scoreFilter) scoreFilter.addEventListener('change', applyFilters);
+    if (issueFilter) issueFilter.addEventListener('change', applyFilters);
+}
+
+// Show Advanced SEO Audit details modal
+function showAdvancedSEODetails(page) {
+    const audit = page.advanced_seo_audit;
+    if (!audit) return;
+    
+    // Create a temporary modal or use existing page modal
+    const modal = document.getElementById('pageModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalTitle || !modalBody) return;
+    
+    modalTitle.textContent = `Advanced SEO Audit: ${page.title || page.url}`;
+    
+    const titleAnalysis = audit.title_analysis || {};
+    const metaAnalysis = audit.meta_description_analysis || {};
+    const headingAnalysis = audit.heading_structure || {};
+    const altAnalysis = audit.alt_tags_analysis || {};
+    const wordAnalysis = audit.word_count_analysis || {};
+    const spamAnalysis = audit.spam_detection || {};
+    const canonicalAnalysis = audit.canonical_analysis || {};
+    const ogAnalysis = audit.og_tags_analysis || {};
+    const twitterAnalysis = audit.twitter_tags_analysis || {};
+    
+    modalBody.innerHTML = `
+        <div class="modal-section">
+            <h3><i class="fas fa-star"></i> Overall SEO Score: ${audit.overall_score}/100</h3>
+            <div class="score-breakdown">
+                <div class="breakdown-item">
+                    <strong>Title:</strong> ${titleAnalysis.score || 0}/10
+                </div>
+                <div class="breakdown-item">
+                    <strong>Meta Description:</strong> ${metaAnalysis.score || 0}/10
+                </div>
+                <div class="breakdown-item">
+                    <strong>Headings:</strong> ${headingAnalysis.score || 0}/10
+                </div>
+                <div class="breakdown-item">
+                    <strong>Alt Tags:</strong> ${altAnalysis.score || 0}/10
+                </div>
+                <div class="breakdown-item">
+                    <strong>Word Count:</strong> ${wordAnalysis.score || 0}/10
+                </div>
+            </div>
+        </div>
+        
+        ${audit.critical_issues && audit.critical_issues.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Critical Issues (${audit.critical_issues.length})</h3>
+                <ul class="issues-list critical">
+                    ${audit.critical_issues.map(issue => `<li>${issue}</li>`).join('')}
+                </ul>
+            </div>
+        ` : ''}
+        
+        ${audit.warnings && audit.warnings.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-exclamation-circle"></i> Warnings (${audit.warnings.length})</h3>
+                <ul class="issues-list warning">
+                    ${audit.warnings.slice(0, 20).map(warning => `<li>${warning}</li>`).join('')}
+                </ul>
+            </div>
+        ` : ''}
+        
+        ${audit.recommendations && audit.recommendations.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-lightbulb"></i> Recommendations</h3>
+                <ul class="recommendations-list">
+                    ${audit.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                </ul>
+            </div>
+        ` : ''}
+        
+        <div class="modal-section">
+            <h3><i class="fas fa-info-circle"></i> Detailed Analysis</h3>
+            <div class="detailed-analysis">
+                <div class="analysis-item">
+                    <h4>Title Tag</h4>
+                    <p><strong>Length:</strong> ${titleAnalysis.length || 0} characters</p>
+                    <p><strong>Status:</strong> ${titleAnalysis.is_optimal ? 'Optimal' : 'Needs Improvement'}</p>
+                    ${titleAnalysis.issues && titleAnalysis.issues.length > 0 ? `<p><strong>Issues:</strong> ${titleAnalysis.issues.join(', ')}</p>` : ''}
+                </div>
+                
+                <div class="analysis-item">
+                    <h4>Meta Description</h4>
+                    <p><strong>Length:</strong> ${metaAnalysis.length || 0} characters</p>
+                    <p><strong>Status:</strong> ${metaAnalysis.is_optimal ? 'Optimal' : 'Needs Improvement'}</p>
+                    ${metaAnalysis.issues && metaAnalysis.issues.length > 0 ? `<p><strong>Issues:</strong> ${metaAnalysis.issues.join(', ')}</p>` : ''}
+                </div>
+                
+                <div class="analysis-item">
+                    <h4>Heading Structure</h4>
+                    <p><strong>H1:</strong> ${headingAnalysis.h1_count || 0}</p>
+                    <p><strong>H2:</strong> ${headingAnalysis.h2_count || 0}</p>
+                    <p><strong>H3:</strong> ${headingAnalysis.h3_count || 0}</p>
+                    <p><strong>Status:</strong> ${headingAnalysis.is_valid ? 'Valid' : 'Invalid'}</p>
+                </div>
+                
+                <div class="analysis-item">
+                    <h4>Image Alt Tags</h4>
+                    <p><strong>Coverage:</strong> ${altAnalysis.alt_coverage || 0}%</p>
+                    <p><strong>Total Images:</strong> ${altAnalysis.total_images || 0}</p>
+                    <p><strong>Missing Alt:</strong> ${altAnalysis.images_without_alt || 0}</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Display DOM Analysis section
+function displayDOMAnalysis(data) {
+    const container = document.getElementById('domAnalysisContainer');
+    if (!container || !data.pages) return;
+    
+    // Filter pages with DOM analysis
+    const pagesWithDOM = data.pages.filter(p => p.dom_analysis);
+    
+    if (pagesWithDOM.length === 0) {
+        container.innerHTML = '<div class="info-message"><i class="fas fa-info-circle"></i><p>DOM Analysis data not available. Run a new crawl to generate DOM analysis.</p></div>';
+        return;
+    }
+    
+    // Calculate site-wide stats
+    const totalNodes = pagesWithDOM.reduce((sum, p) => sum + (p.dom_analysis?.total_nodes || 0), 0);
+    const avgNodes = Math.round(totalNodes / pagesWithDOM.length);
+    const maxDepth = Math.max(...pagesWithDOM.map(p => p.dom_analysis?.deepest_depth || 0));
+    const totalReflows = pagesWithDOM.reduce((sum, p) => sum + (p.dom_analysis?.reflow_elements?.length || 0), 0);
+    const totalScore = pagesWithDOM.reduce((sum, p) => sum + (p.dom_analysis?.score || 0), 0);
+    const avgScore = Math.round(totalScore / pagesWithDOM.length);
+    
+    let html = `
+        <div class="dom-summary">
+            <div class="dom-summary-cards">
+                <div class="dom-card">
+                    <div class="dom-card-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <i class="fas fa-sitemap"></i>
+                    </div>
+                    <div class="dom-card-content">
+                        <h3>${avgNodes.toLocaleString()}</h3>
+                        <p>Avg DOM Nodes</p>
+                    </div>
+                </div>
+                <div class="dom-card">
+                    <div class="dom-card-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <i class="fas fa-layer-group"></i>
+                    </div>
+                    <div class="dom-card-content">
+                        <h3>${maxDepth}</h3>
+                        <p>Max Depth</p>
+                    </div>
+                </div>
+                <div class="dom-card">
+                    <div class="dom-card-icon" style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);">
+                        <i class="fas fa-sync"></i>
+                    </div>
+                    <div class="dom-card-content">
+                        <h3>${totalReflows}</h3>
+                        <p>Reflow Elements</p>
+                    </div>
+                </div>
+                <div class="dom-card">
+                    <div class="dom-card-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <div class="dom-card-content">
+                        <h3>${avgScore}</h3>
+                        <p>DOM Quality Score</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="dom-table-section">
+            <h3>Page-by-Page DOM Analysis</h3>
+            <div class="table-container">
+                <table id="domTable">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>DOM Nodes</th>
+                            <th>Depth</th>
+                            <th>Reflow Elements</th>
+                            <th>Section Warnings</th>
+                            <th>Quality Score</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="domTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Populate table
+    const tbody = document.getElementById('domTableBody');
+    if (!tbody) return;
+    
+    // Sort by node count (highest first)
+    const sortedPages = [...pagesWithDOM].sort((a, b) => 
+        (b.dom_analysis?.total_nodes || 0) - (a.dom_analysis?.total_nodes || 0)
+    );
+    
+    sortedPages.forEach(page => {
+        const dom = page.dom_analysis || {};
+        const nodeCount = dom.total_nodes || 0;
+        const depth = dom.deepest_depth || 0;
+        const reflows = dom.reflow_elements?.length || 0;
+        const warnings = dom.section_warnings?.length || 0;
+        const score = dom.score || 0;
+        const scoreClass = score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'poor';
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><a href="${page.url}" target="_blank">${page.url.substring(0, 50)}${page.url.length > 50 ? '...' : ''}</a></td>
+            <td>
+                <span class="${nodeCount > 2000 ? 'text-danger' : nodeCount > 1000 ? 'text-warning' : 'text-success'}">
+                    ${nodeCount.toLocaleString()}
+                </span>
+            </td>
+            <td>
+                <span class="${depth > 15 ? 'text-danger' : depth > 10 ? 'text-warning' : 'text-success'}">
+                    ${depth} levels
+                </span>
+            </td>
+            <td>
+                ${reflows > 0 ? `<span class="badge badge-warning">${reflows}</span>` : '<span class="badge badge-success">0</span>'}
+            </td>
+            <td>
+                ${warnings > 0 ? `<span class="badge badge-warning">${warnings}</span>` : '<span class="badge badge-success">0</span>'}
+            </td>
+            <td>
+                <span class="score-badge score-${scoreClass}">${score}</span>
+            </td>
+            <td>
+                <button class="action-btn action-btn-view" data-url="${page.url}">
+                    <i class="fas fa-eye"></i> View Details
+                </button>
+            </td>
+        `;
+        
+        // Wire up view button
+        const viewBtn = tr.querySelector('button.action-btn-view');
+        if (viewBtn) {
+            viewBtn.onclick = () => showDOMDetails(page);
+        }
+        
+        tbody.appendChild(tr);
+    });
+}
+
+// Show DOM Analysis details
+function showDOMDetails(page) {
+    const dom = page.dom_analysis;
+    if (!dom) return;
+    
+    const modal = document.getElementById('pageModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalTitle || !modalBody) return;
+    
+    modalTitle.textContent = `DOM Analysis: ${page.title || page.url}`;
+    
+    modalBody.innerHTML = `
+        <div class="modal-section">
+            <h3><i class="fas fa-sitemap"></i> DOM Structure Overview</h3>
+            <div class="dom-stats">
+                <div class="stat-item">
+                    <strong>Total DOM Nodes:</strong> ${(dom.total_nodes || 0).toLocaleString()}
+                </div>
+                <div class="stat-item">
+                    <strong>Deepest Depth:</strong> ${dom.deepest_depth || 0} levels
+                </div>
+                <div class="stat-item">
+                    <strong>DOM Quality Score:</strong> <span class="score-badge">${dom.score || 0}/100</span>
+                </div>
+            </div>
+        </div>
+        
+        ${dom.reflow_elements && dom.reflow_elements.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-sync"></i> Reflow-Triggering Elements (${dom.reflow_elements.length})</h3>
+                <div class="reflow-list">
+                    ${dom.reflow_elements.slice(0, 20).map(el => `
+                        <div class="reflow-item">
+                            <strong>${el.tag}</strong>
+                            ${el.id ? `<span class="badge">#${el.id}</span>` : ''}
+                            ${el.class ? `<span class="badge">.${el.class.split(' ')[0]}</span>` : ''}
+                            <div class="reflow-location">${el.location || 'N/A'}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : ''}
+        
+        ${dom.section_warnings && dom.section_warnings.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Section Warnings (${dom.section_warnings.length})</h3>
+                <div class="warning-list">
+                    ${dom.section_warnings.map(warning => `
+                        <div class="warning-item">
+                            <strong>${warning.tag}</strong>
+                            ${warning.id ? `<span class="badge">#${warning.id}</span>` : ''}
+                            <div class="warning-details">
+                                <strong>Node Count:</strong> ${warning.node_count} (max recommended: 100)
+                            </div>
+                            <div class="warning-location">${warning.location || 'N/A'}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : ''}
+        
+        ${dom.issues && dom.issues.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-exclamation-circle"></i> Issues</h3>
+                <ul class="issues-list">
+                    ${dom.issues.map(issue => `<li>${issue}</li>`).join('')}
+                </ul>
+            </div>
+        ` : ''}
+        
+        ${dom.recommendations && dom.recommendations.length > 0 ? `
+            <div class="modal-section">
+                <h3><i class="fas fa-lightbulb"></i> Recommendations</h3>
+                <ul class="recommendations-list">
+                    ${dom.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                </ul>
+            </div>
+        ` : ''}
+    `;
+    
+    modal.style.display = 'block';
 }

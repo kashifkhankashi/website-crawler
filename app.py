@@ -41,8 +41,35 @@ socketio = SocketIO(
     engineio_logger=False
 )
 
-# Store active crawls
+# Store active crawls (in-memory, but also persisted to disk for Vercel)
 active_crawls: Dict[str, dict] = {}
+
+def get_job_status_file(job_id: str) -> str:
+    """Get path to job status file."""
+    base_output = app.config['UPLOAD_FOLDER']
+    job_dir = os.path.join(base_output, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    return os.path.join(job_dir, 'status.json')
+
+def save_job_status(job_id: str, status_data: dict):
+    """Save job status to disk (for Vercel serverless persistence)."""
+    try:
+        status_file = get_job_status_file(job_id)
+        with open(status_file, 'w', encoding='utf-8') as f:
+            json.dump(status_data, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Could not save job status: {e}")
+
+def load_job_status(job_id: str) -> Optional[dict]:
+    """Load job status from disk."""
+    try:
+        status_file = get_job_status_file(job_id)
+        if os.path.exists(status_file):
+            with open(status_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load job status: {e}")
+    return None
 
 # Hardcoded credentials
 VALID_USERNAME = 'kashi'
@@ -170,7 +197,7 @@ def start_crawl():
     os.makedirs(job_output_dir, exist_ok=True)
     
     # Store crawl info
-    active_crawls[job_id] = {
+    crawl_info = {
         'status': 'starting',
         'url': start_url,
         'max_depth': max_depth,
@@ -180,8 +207,13 @@ def start_crawl():
         'started_at': datetime.now().isoformat(),
         'pages_crawled': 0,
         'links_found': 0,
+        'internal_links': 0,
+        'external_links': 0,
+        'current_page': '',
         'errors': []
     }
+    active_crawls[job_id] = crawl_info
+    save_job_status(job_id, crawl_info)  # Persist to disk for Vercel
     
     # Start crawl in background thread
     thread = threading.Thread(
@@ -205,6 +237,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         active_crawls[job_id]['status'] = 'initializing'
         active_crawls[job_id]['message'] = 'Initializing crawler...'
         active_crawls[job_id]['progress'] = 5
+        save_job_status(job_id, active_crawls[job_id])  # Persist to disk
         
         socketio.emit('progress', {
             'job_id': job_id,
@@ -220,6 +253,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         active_crawls[job_id]['status'] = 'crawling'
         active_crawls[job_id]['message'] = 'Starting to crawl website...'
         active_crawls[job_id]['progress'] = 10
+        save_job_status(job_id, active_crawls[job_id])  # Persist to disk
         
         socketio.emit('progress', {
             'job_id': job_id,
@@ -262,18 +296,46 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
                                 estimated_total = max(20, pages * 2)  # Estimate based on current pages
                                 crawl_progress = min(60, 10 + (pages / estimated_total) * 50)
                                 
+                                # Get additional stats from progress file
+                                internal_links = progress_data.get('internal_links', 0)
+                                external_links = progress_data.get('external_links', 0)
+                                current_page = progress_data.get('current_page', '')
+                                
                                 active_crawls[job_id]['pages_crawled'] = pages
                                 active_crawls[job_id]['links_found'] = links
+                                active_crawls[job_id]['internal_links'] = internal_links
+                                active_crawls[job_id]['external_links'] = external_links
+                                active_crawls[job_id]['current_page'] = current_page
                                 active_crawls[job_id]['progress'] = int(crawl_progress)
-                                active_crawls[job_id]['message'] = f'Crawling... Found {pages} pages, {links} links'
+                                
+                                # Create detailed message
+                                message_parts = [f'Found {pages} pages']
+                                if links > 0:
+                                    message_parts.append(f'{links} links')
+                                if internal_links > 0:
+                                    message_parts.append(f'{internal_links} internal')
+                                if external_links > 0:
+                                    message_parts.append(f'{external_links} external')
+                                if current_page:
+                                    page_display = current_page[:50] + '...' if len(current_page) > 50 else current_page
+                                    message_parts.append(f'Crawling: {page_display}')
+                                
+                                message = 'Crawling... ' + ', '.join(message_parts)
+                                active_crawls[job_id]['message'] = message
+                                
+                                # Persist to disk
+                                save_job_status(job_id, active_crawls[job_id])
                                 
                                 socketio.emit('progress', {
                                     'job_id': job_id,
                                     'status': 'crawling',
-                                    'message': f'Crawling... Found {pages} pages, {links} links',
+                                    'message': message,
                                     'progress': int(crawl_progress),
                                     'pages_crawled': pages,
-                                    'links_found': links
+                                    'links_found': links,
+                                    'internal_links': internal_links,
+                                    'external_links': external_links,
+                                    'current_page': current_page
                                 })
                                 
                                 last_pages = pages
@@ -292,6 +354,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         active_crawls[job_id]['status'] = 'processing'
         active_crawls[job_id]['message'] = 'Processing results and checking links...'
         active_crawls[job_id]['progress'] = 70
+        save_job_status(job_id, active_crawls[job_id])  # Persist to disk
         
         socketio.emit('progress', {
             'job_id': job_id,
@@ -306,6 +369,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         active_crawls[job_id]['status'] = 'generating'
         active_crawls[job_id]['message'] = 'Generating reports...'
         active_crawls[job_id]['progress'] = 90
+        save_job_status(job_id, active_crawls[job_id])  # Persist to disk
         
         socketio.emit('progress', {
             'job_id': job_id,
@@ -320,6 +384,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         active_crawls[job_id]['progress'] = 100
         active_crawls[job_id]['completed_at'] = datetime.now().isoformat()
         active_crawls[job_id]['pages_crawled'] = len(runner.crawled_items)
+        active_crawls[job_id]['links_found'] = len(runner.all_internal_links)
         # Store output files paths
         active_crawls[job_id]['output_files'] = {
             'json': os.path.join(job_output_dir, 'report.json'),
@@ -327,6 +392,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
             'sitemap': os.path.join(job_output_dir, 'sitemap.txt')
         }
         active_crawls[job_id]['output_dir'] = job_output_dir  # Store for reference
+        save_job_status(job_id, active_crawls[job_id])  # Persist to disk
         
         socketio.emit('progress', {
             'job_id': job_id,
@@ -347,6 +413,7 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         if 'errors' not in active_crawls[job_id]:
             active_crawls[job_id]['errors'] = []
         active_crawls[job_id]['errors'].append(error_msg)
+        save_job_status(job_id, active_crawls[job_id])  # Persist to disk
         
         socketio.emit('progress', {
             'job_id': job_id,
@@ -365,35 +432,60 @@ def get_crawl_status(job_id: str):
             print(f"Job {job_id} not in active_crawls. Active jobs: {list(active_crawls.keys())[:3]}")
         
         if job_id not in active_crawls:
-            # Check if results exist (crawl might have completed before)
-            base_output = app.config['UPLOAD_FOLDER']
-            json_path = os.path.join(base_output, job_id, 'report.json')
-            if os.path.exists(json_path):
+            # Try to load from disk (for Vercel serverless persistence)
+            saved_status = load_job_status(job_id)
+            if saved_status:
+                # Restore to active_crawls for this request
+                active_crawls[job_id] = saved_status
+            else:
+                # Check if results exist (crawl might have completed before)
+                base_output = app.config['UPLOAD_FOLDER']
+                json_path = os.path.join(base_output, job_id, 'report.json')
+                if os.path.exists(json_path):
+                    return jsonify({
+                        'status': 'completed',
+                        'message': 'Crawl completed (results found)',
+                        'job_id': job_id,
+                        'progress': 100
+                    })
+                
+                # Also check default output location
+                default_json_path = os.path.join(base_output, 'report.json')
+                if os.path.exists(default_json_path):
+                    return jsonify({
+                        'status': 'completed',
+                        'message': 'Crawl completed (results found in default location)',
+                        'job_id': job_id,
+                        'progress': 100
+                    })
+                
+                # Check if progress file exists (crawl might be in progress)
+                progress_file = os.path.join(base_output, job_id, 'progress.json')
+                if os.path.exists(progress_file):
+                    try:
+                        with open(progress_file, 'r') as f:
+                            progress_data = json.load(f)
+                        pages = progress_data.get('pages_crawled', 0)
+                        links = progress_data.get('links_found', 0)
+                        return jsonify({
+                            'status': 'crawling',
+                            'message': f'Crawling... Found {pages} pages, {links} links',
+                            'job_id': job_id,
+                            'progress': min(60, 10 + (pages / max(20, pages * 2)) * 50),
+                            'pages_crawled': pages,
+                            'links_found': links
+                        })
+                    except:
+                        pass
+                
+                # Return a status indicating job not found
                 return jsonify({
-                    'status': 'completed',
-                    'message': 'Crawl completed (results found)',
+                    'status': 'not_found',
+                    'message': f'Job {job_id} not found. It may have been removed or never started properly.',
                     'job_id': job_id,
-                    'progress': 100
+                    'error': True,
+                    'suggestion': 'Please try starting a new crawl.'
                 })
-            
-            # Also check default output location
-            default_json_path = os.path.join(base_output, 'report.json')
-            if os.path.exists(default_json_path):
-                return jsonify({
-                    'status': 'completed',
-                    'message': 'Crawl completed (results found in default location)',
-                    'job_id': job_id,
-                    'progress': 100
-                })
-            
-            # Return a status indicating job not found
-            return jsonify({
-                'status': 'not_found',
-                'message': f'Job {job_id} not found. It may have been removed or never started properly.',
-                'job_id': job_id,
-                'error': True,
-                'suggestion': 'Please try starting a new crawl.'
-            })
         
         # Return current status
         crawl_info = active_crawls[job_id]
@@ -403,7 +495,10 @@ def get_crawl_status(job_id: str):
             'progress': crawl_info.get('progress', 0),
             'message': crawl_info.get('message', ''),
             'pages_crawled': crawl_info.get('pages_crawled', 0),
-            'links_found': crawl_info.get('links_found', 0)
+            'links_found': crawl_info.get('links_found', 0),
+            'internal_links': crawl_info.get('internal_links', 0),
+            'external_links': crawl_info.get('external_links', 0),
+            'current_page': crawl_info.get('current_page', '')
         })
     except Exception as e:
         return jsonify({
@@ -520,42 +615,74 @@ def results_page(job_id: str):
 
 @app.route('/api/list-jobs')
 def list_jobs():
-    """List all available crawl jobs (results that exist)."""
+    """List all available crawl jobs (results that exist) - saved crawl history."""
     jobs = []
+    seen_job_ids = set()
     
     # Check active crawls
     for job_id, crawl_info in active_crawls.items():
+        seen_job_ids.add(job_id)
         jobs.append({
             'job_id': job_id,
             'url': crawl_info.get('url', ''),
             'status': crawl_info.get('status', 'unknown'),
             'started_at': crawl_info.get('started_at', ''),
-            'pages_crawled': crawl_info.get('pages_crawled', 0)
+            'completed_at': crawl_info.get('completed_at', ''),
+            'pages_crawled': crawl_info.get('pages_crawled', 0),
+            'links_found': crawl_info.get('links_found', 0),
+            'site_seo_score': None  # Will be loaded from report if available
         })
     
-    # Also check for completed jobs in output directory
+    # Also check for completed jobs in output directory (saved crawl history)
     output_dir = app.config['UPLOAD_FOLDER']
     if os.path.exists(output_dir):
         for item in os.listdir(output_dir):
+            if item in seen_job_ids:
+                continue
+                
             item_path = os.path.join(output_dir, item)
             if os.path.isdir(item_path):
                 # Check if it's a job directory with results
                 json_path = os.path.join(item_path, 'report.json')
                 if os.path.exists(json_path):
-                    # Check if already in active_crawls
-                    if not any(j['job_id'] == item for j in jobs):
-                        try:
-                            with open(json_path, 'r', encoding='utf-8') as f:
-                                report_data = json.load(f)
-                            jobs.append({
-                                'job_id': item,
-                                'url': report_data.get('pages', [{}])[0].get('url', '') if report_data.get('pages') else '',
-                                'status': 'completed',
-                                'started_at': report_data.get('crawl_date', ''),
-                                'pages_crawled': report_data.get('total_pages', 0)
-                            })
-                        except:
-                            pass
+                    try:
+                        with open(json_path, 'r', encoding='utf-8') as f:
+                            report_data = json.load(f)
+                        
+                        # Get first page URL as site URL
+                        site_url = ''
+                        if report_data.get('pages'):
+                            first_page = report_data['pages'][0]
+                            site_url = first_page.get('url', '')
+                            # Extract domain from URL
+                            if site_url:
+                                from urllib.parse import urlparse
+                                parsed = urlparse(site_url)
+                                site_url = f"{parsed.scheme}://{parsed.netloc}"
+                        
+                        job_info = {
+                            'job_id': item,
+                            'url': site_url,
+                            'status': 'completed',
+                            'started_at': report_data.get('crawl_date', ''),
+                            'completed_at': report_data.get('crawl_date', ''),
+                            'pages_crawled': report_data.get('total_pages', 0),
+                            'links_found': len(report_data.get('pages', [{}])[0].get('internal_links', [])) if report_data.get('pages') else 0,
+                            'site_seo_score': report_data.get('site_seo_score', {}).get('score') if report_data.get('site_seo_score') else None
+                        }
+                        
+                        # Try to get more detailed stats
+                        if report_data.get('pages'):
+                            total_links = sum(len(p.get('internal_links', [])) for p in report_data['pages'])
+                            job_info['links_found'] = total_links
+                        
+                        jobs.append(job_info)
+                    except Exception as e:
+                        print(f"Error loading job {item}: {e}")
+                        pass
+    
+    # Sort by started_at (most recent first)
+    jobs.sort(key=lambda x: x.get('started_at', ''), reverse=True)
     
     return jsonify({'jobs': jobs})
 

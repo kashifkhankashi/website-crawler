@@ -57,8 +57,26 @@
         </header>
 
         <main>
+            <!-- Crawl History Section -->
+            <div class="card" id="historyCard" style="display: none;">
+                <div class="section-header">
+                    <h2><i class="fas fa-history"></i> Crawl History</h2>
+                    <button class="btn btn-secondary" onclick="hideHistory()">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div id="historyContainer">
+                    <p class="loading">Loading crawl history...</p>
+                </div>
+            </div>
+
             <div class="card">
-                <h2>Start New Crawl</h2>
+                <div class="section-header">
+                    <h2>Start New Crawl</h2>
+                    <button class="btn btn-secondary" onclick="showHistory()">
+                        <i class="fas fa-history"></i> View History
+                    </button>
+                </div>
                 <form id="crawlForm">
                     <div class="form-group">
                         <label for="url">
@@ -130,8 +148,20 @@
                         </div>
                         <div class="stat-item">
                             <i class="fas fa-link"></i>
-                            <span>Links: <strong id="linksCount">0</strong></span>
+                            <span>Total Links: <strong id="linksCount">0</strong></span>
                         </div>
+                        <div class="stat-item" id="internalLinksItem" style="display: none;">
+                            <i class="fas fa-arrow-right"></i>
+                            <span>Internal: <strong id="internalLinksCount">0</strong></span>
+                        </div>
+                        <div class="stat-item" id="externalLinksItem" style="display: none;">
+                            <i class="fas fa-external-link-alt"></i>
+                            <span>External: <strong id="externalLinksCount">0</strong></span>
+                        </div>
+                    </div>
+                    <div id="currentPageInfo" class="current-page-info" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span id="currentPageText">Crawling...</span>
                     </div>
                 </div>
                 <div id="errorContainer" class="error-container" style="display: none;"></div>

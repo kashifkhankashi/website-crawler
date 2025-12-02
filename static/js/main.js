@@ -3,6 +3,75 @@
 let socket;
 let currentJobId = null;
 
+// Show crawl history
+async function showHistory() {
+    const historyCard = document.getElementById('historyCard');
+    const historyContainer = document.getElementById('historyContainer');
+    
+    if (!historyCard || !historyContainer) return;
+    
+    historyCard.style.display = 'block';
+    historyContainer.innerHTML = '<p class="loading">Loading crawl history...</p>';
+    
+    try {
+        const response = await fetch('/api/list-jobs');
+        const data = await response.json();
+        
+        if (!data.jobs || data.jobs.length === 0) {
+            historyContainer.innerHTML = '<p style="text-align: center; color: var(--text-muted);">No crawl history found. Start your first crawl!</p>';
+            return;
+        }
+        
+        let html = '<div class="history-list">';
+        data.jobs.forEach(job => {
+            const date = new Date(job.started_at || job.completed_at || Date.now());
+            const dateStr = date.toLocaleString();
+            const statusBadge = job.status === 'completed' 
+                ? '<span class="badge badge-success">Completed</span>'
+                : job.status === 'crawling'
+                ? '<span class="badge badge-info">Crawling</span>'
+                : '<span class="badge badge-warning">' + job.status + '</span>';
+            
+            html += `
+                <div class="history-item" onclick="viewHistoryJob('${job.job_id}')">
+                    <div class="history-item-header">
+                        <div class="history-item-title">
+                            <strong>${job.url || 'Unknown URL'}</strong>
+                            ${statusBadge}
+                        </div>
+                        <div class="history-item-meta">
+                            <span><i class="fas fa-calendar"></i> ${dateStr}</span>
+                        </div>
+                    </div>
+                    <div class="history-item-stats">
+                        <span><i class="fas fa-file-alt"></i> ${job.pages_crawled || 0} pages</span>
+                        <span><i class="fas fa-link"></i> ${job.links_found || 0} links</span>
+                        ${job.site_seo_score !== null ? `<span><i class="fas fa-star"></i> SEO: ${job.site_seo_score}/100</span>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        historyContainer.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading history:', error);
+        historyContainer.innerHTML = '<p class="error">Error loading crawl history. Please try again.</p>';
+    }
+}
+
+// Hide crawl history
+function hideHistory() {
+    const historyCard = document.getElementById('historyCard');
+    if (historyCard) {
+        historyCard.style.display = 'none';
+    }
+}
+
+// View a historical job
+function viewHistoryJob(jobId) {
+    window.location.href = `/results/${jobId}`;
+}
+
 // Initialize Socket.IO connection
 document.addEventListener('DOMContentLoaded', function() {
     socket = io();
@@ -148,6 +217,36 @@ function updateProgress(data) {
         }
         if (data.links_found !== undefined) {
             document.getElementById('linksCount').textContent = data.links_found;
+        }
+        // Show internal/external links if available
+        if (data.internal_links !== undefined) {
+            const internalItem = document.getElementById('internalLinksItem');
+            const internalCount = document.getElementById('internalLinksCount');
+            if (internalItem && internalCount) {
+                internalItem.style.display = 'flex';
+                internalCount.textContent = data.internal_links;
+            }
+        }
+        if (data.external_links !== undefined) {
+            const externalItem = document.getElementById('externalLinksItem');
+            const externalCount = document.getElementById('externalLinksCount');
+            if (externalItem && externalCount) {
+                externalItem.style.display = 'flex';
+                externalCount.textContent = data.external_links;
+            }
+        }
+    }
+    
+    // Update current page info
+    if (data.current_page) {
+        const currentPageInfo = document.getElementById('currentPageInfo');
+        const currentPageText = document.getElementById('currentPageText');
+        if (currentPageInfo && currentPageText) {
+            currentPageInfo.style.display = 'block';
+            const pageDisplay = data.current_page.length > 60 
+                ? data.current_page.substring(0, 60) + '...' 
+                : data.current_page;
+            currentPageText.textContent = `Current: ${pageDisplay}`;
         }
     }
     

@@ -286,6 +286,28 @@ small {
     font-size: 1.1rem;
 }
 
+/* Current Page Info */
+.current-page-info {
+    margin-top: 15px;
+    padding: 12px 15px;
+    background: #e7f3ff;
+    border-left: 4px solid var(--primary-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+    color: var(--dark-color);
+}
+
+.current-page-info i {
+    color: var(--primary-color);
+}
+
+.current-page-info span {
+    word-break: break-all;
+}
+
 /* Success Message */
 .success-message {
     display: flex;

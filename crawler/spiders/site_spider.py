@@ -263,6 +263,9 @@ class SiteSpider(scrapy.Spider):
         else:
             item['performance_analysis'] = {}
         
+        # Store HTML content for advanced analysis (DOM, etc.)
+        item['html_content'] = response.text
+        
         return item
 
     def _extract_images(self, response: HtmlResponse) -> List[dict]:
