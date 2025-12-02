@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crawl Results - Website Crawler</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/results.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-chart-bar"></i> Crawl Results</h1>
+            <a href="/" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Home
+            </a>
+        </header>
+
+        <main>
+            <!-- Summary Cards -->
+            <div class="summary-cards">
+                <div class="summary-card" onclick="showSection('overview')">
+                    <div class="card-icon blue">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="totalPages">0</h3>
+                        <p>Pages Crawled</p>
+                    </div>
+                </div>
+                <div class="summary-card" onclick="showSection('broken-links')">
+                    <div class="card-icon red">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="brokenLinks">0</h3>
+                        <p>Broken Links</p>
+                    </div>
+                </div>
+                <div class="summary-card" onclick="showSection('duplicates')">
+                    <div class="card-icon orange">
+                        <i class="fas fa-copy"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="duplicatePages">0</h3>
+                        <p>Duplicate Pages</p>
+                    </div>
+                </div>
+                <div class="summary-card" onclick="showSection('similarity')">
+                    <div class="card-icon purple">
+                        <i class="fas fa-project-diagram"></i>
+                    </div>
+                    <div class="card-content">
+                        <h3 id="similarPages">0</h3>
+                        <p>Similar Content</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs Navigation -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showSection('overview')">
+                    <i class="fas fa-list"></i> Overview
+                </button>
+                <button class="tab-btn" onclick="showSection('broken-links')">
+                    <i class="fas fa-unlink"></i> Broken Links
+                </button>
+                <button class="tab-btn" onclick="showSection('duplicates')">
+                    <i class="fas fa-copy"></i> Duplicates
+                </button>
+                <button class="tab-btn" onclick="showSection('similarity')">
+                    <i class="fas fa-project-diagram"></i> Similarity
+                </button>
+                <button class="tab-btn" onclick="showSection('statistics')">
+                    <i class="fas fa-chart-pie"></i> Statistics
+                </button>
+            </div>
+
+            <!-- Overview Section -->
+            <section id="overview-section" class="content-section active">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-list"></i> All Pages</h2>
+                        <div class="section-actions">
+                            <input type="text" id="searchInput" placeholder="Search URLs..." class="search-box">
+                            <select id="duplicateFilter" class="filter-select">
+                                <option value="all">All Pages</option>
+                                <option value="duplicate">Duplicates Only</option>
+                                <option value="unique">Unique Only</option>
+                            </select>
+                            <select id="statusFilter" class="filter-select">
+                                <option value="all">All Status</option>
+                                <option value="200">200 OK</option>
+                                <option value="404">404 Not Found</option>
+                                <option value="error">Errors</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="resultsTable">
+                            <thead>
+                                <tr>
+                                    <th>URL</th>
+                                    <th>Status</th>
+                                    <th>Title</th>
+                                    <th>Word Count</th>
+                                    <th>Duplicate</th>
+                                    <th>Similarity</th>
+                                    <th>Broken Links</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <tr>
+                                    <td colspan="8" class="loading">Loading results...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Broken Links Section -->
+            <section id="broken-links-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-unlink"></i> Broken Links</h2>
+                        <span class="badge badge-danger" id="brokenLinksCount">0 found</span>
+                    </div>
+                    <div id="brokenLinksContainer">
+                        <p class="loading">Loading broken links...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Duplicates Section -->
+            <section id="duplicates-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-copy"></i> Duplicate Pages</h2>
+                        <span class="badge badge-warning" id="duplicatesCount">0 groups</span>
+                    </div>
+                    <div id="duplicatesContainer">
+                        <p class="loading">Loading duplicates...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Similarity Section -->
+            <section id="similarity-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-project-diagram"></i> Content Similarity</h2>
+                        <span class="badge badge-info" id="similarityCount">0 pairs</span>
+                    </div>
+                    <div id="similarityContainer">
+                        <p class="loading">Loading similarity data...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics Section -->
+            <section id="statistics-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-chart-pie"></i> Statistics & Analytics</h2>
+                    </div>
+                    <div class="charts-container">
+                        <div class="chart-card">
+                            <h3>Status Code Distribution</h3>
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Word Count Distribution</h3>
+                            <canvas id="wordCountChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Duplicate Status</h3>
+                            <canvas id="duplicateChart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Similarity Distribution</h3>
+                            <canvas id="similarityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Download Actions -->
+            <div class="card">
+                <div class="section-header">
+                    <h2><i class="fas fa-download"></i> Export Reports</h2>
+                </div>
+                <div class="download-actions">
+                    <button id="downloadJsonBtn" class="btn btn-primary">
+                        <i class="fas fa-download"></i> Download JSON Report
+                    </button>
+                    <button id="downloadCsvBtn" class="btn btn-primary">
+                        <i class="fas fa-download"></i> Download CSV Summary
+                    </button>
+                    <button id="downloadSitemapBtn" class="btn btn-primary">
+                        <i class="fas fa-download"></i> Download Sitemap
+                    </button>
+                    <button id="exportReportBtn" class="btn btn-success">
+                        <i class="fas fa-file-pdf"></i> Export Full Report
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Page Detail Modal -->
+    <div id="pageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Page Details</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const jobId = '{{ job_id }}';
+    </script>
+    <script src="{{ url_for('static', filename='js/results.js') }}"></script>
+</body>
+</html>

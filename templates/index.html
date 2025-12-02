@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Crawler - Siteliner Clone</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-spider"></i> Website Crawler</h1>
+            <p class="subtitle">Crawl websites, detect duplicates, and find broken links</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>Start New Crawl</h2>
+                <form id="crawlForm">
+                    <div class="form-group">
+                        <label for="url">
+                            <i class="fas fa-link"></i> Website URL
+                        </label>
+                        <input 
+                            type="url" 
+                            id="url" 
+                            name="url" 
+                            placeholder="https://example.com" 
+                            required
+                        >
+                        <small>Enter the starting URL to crawl</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="max_depth">
+                                <i class="fas fa-layer-group"></i> Max Depth
+                            </label>
+                            <input 
+                                type="number" 
+                                id="max_depth" 
+                                name="max_depth" 
+                                value="5" 
+                                min="1" 
+                                max="20"
+                            >
+                            <small>How deep to crawl (1-20)</small>
+                        </div>
+
+                    <div class="form-group">
+                        <label for="output_dir">
+                            <i class="fas fa-folder"></i> Output Directory
+                        </label>
+                        <input 
+                            type="text" 
+                            id="output_dir" 
+                            name="output_dir" 
+                            value="output"
+                        >
+                        <small>Where to save results</small>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input 
+                            type="checkbox" 
+                            id="clear_cache" 
+                            name="clear_cache" 
+                            checked
+                            style="margin-right: 8px;"
+                        >
+                        <i class="fas fa-sync-alt"></i> Clear Cache (Get Fresh Data)
+                    </label>
+                    <small>Uncheck to use cached data (faster but may be outdated)</small>
+                </div>
+
+                    <button type="submit" class="btn btn-primary" id="startBtn">
+                        <i class="fas fa-play"></i> Start Crawling
+                    </button>
+                </form>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="card" id="progressCard" style="display: none;">
+                <h2>Crawl Progress</h2>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+                <div class="progress-info">
+                    <p id="progressMessage">Initializing...</p>
+                    <div class="stats" id="stats" style="display: none;">
+                        <div class="stat-item">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Pages: <strong id="pagesCount">0</strong></span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-link"></i>
+                            <span>Links: <strong id="linksCount">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+                <div id="errorContainer" class="error-container" style="display: none;"></div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="card" id="resultsCard" style="display: none;">
+                <h2>Crawl Completed!</h2>
+                <div class="success-message">
+                    <i class="fas fa-check-circle"></i>
+                    <p>Crawl completed successfully!</p>
+                </div>
+                <div class="results-actions">
+                    <a href="#" id="viewResultsBtn" class="btn btn-success">
+                        <i class="fas fa-eye"></i> View Results
+                    </a>
+                    <button id="downloadJsonBtn" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Download JSON
+                    </button>
+                    <button id="downloadCsvBtn" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Download CSV
+                    </button>
+                    <button id="downloadSitemapBtn" class="btn btn-secondary">
+                        <i class="fas fa-download"></i> Download Sitemap
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Website Crawler v1.0 | Built with Scrapy & Flask</p>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
+
