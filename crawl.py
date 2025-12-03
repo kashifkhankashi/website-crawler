@@ -48,6 +48,14 @@ try:
     ADVANCED_ANALYZERS_AVAILABLE = True
 except ImportError:
     ADVANCED_ANALYZERS_AVAILABLE = False
+
+# Import page power analyzer
+try:
+    from page_power_analyzer import PagePowerAnalyzer
+    PAGE_POWER_AVAILABLE = True
+except ImportError:
+    PAGE_POWER_AVAILABLE = False
+    PagePowerAnalyzer = None
     AdvancedSEOAnalyzer = None
     DOMAnalyzer = None
 
@@ -232,18 +240,51 @@ class ReportGenerator:
         orphan_pages = self._detect_orphan_pages(items)
         report_data['orphan_pages'] = orphan_pages
         
+        # Calculate Page Power (prominence based on internal linking)
+        page_powers = {}
+        page_power_stats = {}
+        if PAGE_POWER_AVAILABLE and PagePowerAnalyzer:
+            try:
+                power_analyzer = PagePowerAnalyzer()
+                page_powers = power_analyzer.analyze_site(items)
+                page_power_stats = power_analyzer.get_page_power_stats(items)
+                report_data['page_power_stats'] = page_power_stats
+            except Exception as e:
+                print(f"Warning: Page Power calculation failed: {e}")
+                page_powers = {}
+        
         for item in items:
             url = item['url']
             
             # Get broken links for this page
             page_broken_links = []
-            for link in item.get('internal_links', []):
-                if link in broken_links and broken_links[link]['is_broken']:
-                    page_broken_links.append({
-                        'url': link,
-                        'status': broken_links[link]['status'],
-                        'status_text': broken_links[link]['status_text']
-                    })
+            internal_links_list = item.get('internal_links', [])
+            
+            # Handle both old format (list of strings) and new format (list of dicts)
+            for link_item in internal_links_list:
+                # Extract URL from either format
+                if isinstance(link_item, dict):
+                    link_url = link_item.get('url', '')
+                    link_location = link_item  # Keep full location data
+                else:
+                    link_url = link_item
+                    link_location = {'url': link_url}  # Minimal location data
+                
+                if link_url in broken_links and broken_links[link_url]['is_broken']:
+                    broken_link_data = {
+                        'url': link_url,
+                        'status': broken_links[link_url]['status'],
+                        'status_text': broken_links[link_url]['status_text'],
+                        # Add location information
+                        'anchor_text': link_location.get('anchor_text', ''),
+                        'parent_tag': link_location.get('parent_tag'),
+                        'parent_class': link_location.get('parent_class'),
+                        'parent_id': link_location.get('parent_id'),
+                        'css_selector': link_location.get('css_selector', ''),
+                        'context': link_location.get('context', {}),
+                        'line_number': link_location.get('line_number', 0)
+                    }
+                    page_broken_links.append(broken_link_data)
             
             # Determine duplicate status
             duplicate_status = 'Exact Duplicate' if item.get('is_duplicate') else 'Unique'
@@ -323,6 +364,10 @@ class ReportGenerator:
                         page_data['dom_analysis'] = dom_analysis
                 except Exception as e:
                     print(f"Warning: DOM analysis failed for {url}: {e}")
+            
+            # Add Page Power score
+            if url in page_powers:
+                page_data['page_power'] = page_powers[url]
             
             report_data['pages'].append(page_data)
         
@@ -463,7 +508,7 @@ class ReportGenerator:
         }
 
         return keyword_analysis, page_keyword_map
-
+    
     @staticmethod
     def _tokenize(text: str) -> List[str]:
         """Simple tokenizer for keyword analysis."""
@@ -632,7 +677,9 @@ class ReportGenerator:
                 # Count broken links
                 broken_count = 0
                 for link in item.get('internal_links', []):
-                    if link in broken_links and broken_links[link]['is_broken']:
+                    # Extract URL from dict format or use string directly
+                    link_url = link.get('url', '') if isinstance(link, dict) else link
+                    if link_url and link_url in broken_links and broken_links[link_url]['is_broken']:
                         broken_count += 1
                 
                 writer.writerow([
@@ -680,9 +727,21 @@ class ReportGenerator:
             if url:
                 all_urls.add(url)
             
-            # Add all internal links
+            # Add all internal links (handle both string and dict formats)
             for link in item.get('internal_links', []):
-                linked_urls.add(link)
+                # Extract URL from dict format or use string directly
+                if isinstance(link, dict):
+                    link_url = link.get('url', '')
+                    if link_url:
+                        linked_urls.add(link_url)
+                elif isinstance(link, str):
+                    linked_urls.add(link)
+                else:
+                    # Fallback: convert to string
+                    try:
+                        linked_urls.add(str(link))
+                    except (TypeError, ValueError):
+                        pass
         
         # Orphan pages are pages that exist but are never linked to
         # (except the start page which might not be linked to)
@@ -967,7 +1026,10 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
                     with open(result_file, 'r', encoding='utf-8') as f:
                         results = json_module.load(f)
                         self.crawled_items = results.get('items', [])
-                        self.all_internal_links = set(results.get('links', []))
+                        links_data = results.get('links', [])
+                        # Ensure all_internal_links only contains strings
+                        self.all_internal_links = {link if isinstance(link, str) else (link.get('url', '') if isinstance(link, dict) else str(link))
+                                                  for link in links_data if link}
                 else:
                     raise Exception("Crawl completed but results file not found")
                     
@@ -998,7 +1060,10 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
             
             # Retrieve collected items and links
             self.crawled_items = ItemStoragePipeline.get_collected_items()
-            self.all_internal_links = ItemStoragePipeline.get_collected_links()
+            collected_links = ItemStoragePipeline.get_collected_links()
+            # Ensure all_internal_links only contains strings (filter out any dicts that might have slipped through)
+            self.all_internal_links = {link if isinstance(link, str) else (link.get('url', '') if isinstance(link, dict) else str(link)) 
+                                      for link in collected_links if link}
     
     def _check_broken_links(self) -> Dict[str, dict]:
         """Check all internal links for broken status."""

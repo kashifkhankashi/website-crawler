@@ -116,9 +116,12 @@ class SiteSpider(scrapy.Spider):
             # Find and follow internal links
             links = self._extract_links(response)
             
-            for link in links['internal']:
+            for link_data in links['internal']:
+                # Extract URL from link data (can be dict or string for backward compatibility)
+                link_url = link_data.get('url', link_data) if isinstance(link_data, dict) else link_data
+                
                 # Normalize link
-                normalized_link = self._normalize_url(link)
+                normalized_link = self._normalize_url(link_url)
                 
                 if normalized_link and normalized_link not in self.visited_urls:
                     self.all_internal_links.add(normalized_link)
@@ -311,19 +314,21 @@ class SiteSpider(scrapy.Spider):
     
     def _extract_links(self, response: HtmlResponse) -> dict:
         """
-        Extract all links from the page.
+        Extract all links from the page with location information.
         
         Args:
             response: The HTTP response
             
         Returns:
-            Dictionary with 'internal' and 'external' link lists
+            Dictionary with 'internal' and 'external' link lists (with location data)
         """
         soup = BeautifulSoup(response.text, 'lxml')
         base_url = get_base_url(response)
         
         internal_links = []
         external_links = []
+        internal_links_dict = {}  # Track by URL to avoid duplicates but keep location data
+        external_links_urls = set()  # Track external URLs to avoid duplicates
         
         # Find all anchor tags
         for link in soup.find_all('a', href=True):
@@ -352,16 +357,51 @@ class SiteSpider(scrapy.Spider):
             if not normalized:
                 continue
             
+            # Extract location information
+            anchor_text = link.get_text(strip=True)
+            
+            # Get parent element info
+            parent = link.parent
+            parent_tag = parent.name if parent else None
+            parent_class = ' '.join(parent.get('class', [])) if parent and parent.get('class') else None
+            parent_id = parent.get('id', None) if parent else None
+            
+            # Build CSS selector
+            css_selector = self._build_css_selector(link, soup)
+            
+            # Get surrounding context (text before and after link)
+            context = self._get_link_context(link)
+            
+            # Get line number (approximate)
+            line_number = self._get_line_number(response.text, str(link))
+            
+            link_data = {
+                'url': normalized,
+                'anchor_text': anchor_text,
+                'parent_tag': parent_tag,
+                'parent_class': parent_class,
+                'parent_id': parent_id,
+                'css_selector': css_selector,
+                'context': context,
+                'line_number': line_number
+            }
+            
             # Check if internal or external
             parsed_url = urlparse(normalized)
             if parsed_url.netloc in self.allowed_domains:
-                if normalized not in internal_links:
-                    internal_links.append(normalized)
+                # Store with location data, keep first occurrence if duplicate
+                if normalized not in internal_links_dict:
+                    internal_links_dict[normalized] = link_data
                     self.stats['internal_links'] += 1
             else:
-                if normalized not in external_links:
-                    external_links.append(normalized)
+                # Check if URL already exists in external links using set
+                if normalized not in external_links_urls:
+                    external_links_urls.add(normalized)
+                    external_links.append(link_data)
                     self.stats['external_links'] += 1
+        
+        # Convert dict to list for internal links
+        internal_links = list(internal_links_dict.values())
         
         self.stats['links_found'] += len(internal_links) + len(external_links)
         
@@ -369,6 +409,91 @@ class SiteSpider(scrapy.Spider):
             'internal': internal_links,
             'external': external_links
         }
+    
+    def _build_css_selector(self, element, soup) -> str:
+        """Build a CSS selector for the element."""
+        try:
+            # Try to build a unique selector
+            selector_parts = []
+            current = element
+            
+            while current and current.name:
+                part = current.name
+                
+                # Add ID if available
+                if current.get('id'):
+                    part += f"#{current.get('id')}"
+                    selector_parts.insert(0, part)
+                    break
+                
+                # Add class if available
+                classes = current.get('class', [])
+                if classes:
+                    class_str = '.'.join(classes)
+                    part += f".{class_str}"
+                
+                # Add nth-of-type if needed for uniqueness
+                if current.parent:
+                    siblings = [s for s in current.parent.children if hasattr(s, 'name') and s.name == current.name]
+                    if len(siblings) > 1:
+                        index = siblings.index(current) + 1
+                        part += f":nth-of-type({index})"
+                
+                selector_parts.insert(0, part)
+                current = current.parent
+                
+                # Limit depth
+                if len(selector_parts) > 5:
+                    break
+            
+            return ' > '.join(selector_parts) if selector_parts else 'a'
+        except Exception:
+            return 'a'
+    
+    def _get_link_context(self, link) -> dict:
+        """Get surrounding text context for the link."""
+        try:
+            # Get text before link (from parent)
+            parent = link.parent
+            if parent:
+                # Get all text nodes
+                all_text = parent.get_text(separator=' ', strip=True)
+                link_text = link.get_text(strip=True)
+                
+                # Find position of link text
+                if link_text in all_text:
+                    index = all_text.find(link_text)
+                    before = all_text[:index].strip()[-100:]  # Last 100 chars before
+                    after = all_text[index + len(link_text):].strip()[:100]  # First 100 chars after
+                    
+                    return {
+                        'before': before,
+                        'after': after,
+                        'full_context': all_text[:200]  # First 200 chars
+                    }
+            
+            return {
+                'before': '',
+                'after': '',
+                'full_context': link.get_text(strip=True)
+            }
+        except Exception:
+            return {
+                'before': '',
+                'after': '',
+                'full_context': ''
+            }
+    
+    def _get_line_number(self, html_content: str, element_str: str) -> int:
+        """Get approximate line number of element in HTML."""
+        try:
+            lines = html_content.split('\n')
+            for i, line in enumerate(lines, 1):
+                if element_str[:50] in line:  # Match first 50 chars
+                    return i
+            return 0
+        except Exception:
+            return 0
     
     def _normalize_url(self, url: str) -> Optional[str]:
         """

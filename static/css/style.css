@@ -102,18 +102,33 @@ body {
     background-attachment: fixed;
     min-height: 100vh;
     color: var(--text-color);
-    padding: var(--space-lg);
+    padding: var(--space-md);
     line-height: 1.6;
     font-size: var(--font-base);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
 }
 
 /* Container */
 .container {
-    max-width: 1280px;
+    max-width: 100%;
     margin: 0 auto;
     width: 100%;
+    padding: 0 var(--space-sm);
+    box-sizing: border-box;
+}
+
+@media (min-width: 1200px) {
+    .container {
+        max-width: 1200px;
+    }
+}
+
+@media (min-width: 1400px) {
+    .container {
+        max-width: 1400px;
+    }
 }
 
 /* Header */
@@ -131,7 +146,7 @@ header.results-header {
 }
 
 header h1 {
-    font-size: var(--font-5xl);
+    font-size: clamp(1.5rem, 4vw, var(--font-5xl));
     margin-bottom: var(--space-md);
     text-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     font-weight: 800;

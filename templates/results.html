@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>Crawl Results - Website Crawler</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/results.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/enhancements.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/page_power.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
@@ -121,6 +122,9 @@
                 <button class="tab-btn" onclick="showSection('orphan-pages')">
                     <i class="fas fa-unlink"></i> Orphan Pages
                 </button>
+                <button class="tab-btn" onclick="showSection('page-power')">
+                    <i class="fas fa-bolt"></i> Page Power
+                </button>
                 <button class="tab-btn" onclick="showSection('advanced-seo')">
                     <i class="fas fa-clipboard-check"></i> Advanced SEO Audit
                 </button>
@@ -159,6 +163,7 @@
                                     <th>Word Count</th>
                                     <th>Duplicate</th>
                                     <th>Similarity</th>
+                                    <th>Page Power</th>
                                     <th>Broken Links</th>
                                     <th>Actions</th>
                                 </tr>
@@ -464,6 +469,34 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Page Power Section -->
+            <section id="page-power-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-bolt"></i> Page Power Analysis</h2>
+                    </div>
+                    
+                    <!-- Page Power Description -->
+                    <div class="page-power-description">
+                        <div class="info-box">
+                            <h3><i class="fas fa-info-circle"></i> What is Page Power?</h3>
+                            <p><strong>Page Power</strong> is a metric that measures the prominence and authority of pages within your website based on internal linking patterns. Similar to Google's PageRank algorithm, it calculates how influential each page is by analyzing:</p>
+                            <ul>
+                                <li><strong>Incoming Links:</strong> Pages with more internal links pointing to them receive higher power</li>
+                                <li><strong>Link Quality:</strong> Links from high-power pages contribute more value than links from low-power pages</li>
+                                <li><strong>Link Distribution:</strong> Pages that distribute their power to fewer pages pass more value</li>
+                                <li><strong>Homepage Boost:</strong> The homepage typically has the highest power as the entry point</li>
+                            </ul>
+                            <p><strong>Why it matters:</strong> Pages with higher Page Power are more likely to be discovered by search engines and users, receive more link equity, and can help boost the visibility of pages they link to. Understanding your site's Page Power distribution helps you optimize internal linking structure for better SEO performance.</p>
+                        </div>
+                    </div>
+                    
+                    <div id="pagePowerContainer">
+                        <p class="loading">Loading page power analysis...</p>
                     </div>
                 </div>
             </section>

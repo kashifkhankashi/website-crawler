@@ -1,14 +1,24 @@
 // Authentication JavaScript
 
 // Check authentication status on page load
-document.addEventListener('DOMContentLoaded', function() {
-    checkAuthentication();
+document.addEventListener('DOMContentLoaded', async function() {
+    await checkAuthStatus();
+    
+    // Set up login form handler
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
 });
 
 // Check if user is authenticated
-async function checkAuthentication() {
+async function checkAuthStatus() {
     try {
-        const response = await fetch('/api/check-auth');
+        const response = await fetch('/api/check-auth', {
+            method: 'GET',
+            credentials: 'include' // Important for session cookies
+        });
+        
         const data = await response.json();
         
         if (data.authenticated) {
@@ -19,32 +29,36 @@ async function checkAuthentication() {
             showLoginModal();
         }
     } catch (error) {
-        console.error('Error checking authentication:', error);
-        // On error, show login modal
+        console.error('Auth check error:', error);
+        // On error, show login modal to be safe
         showLoginModal();
     }
 }
 
 // Show login modal
 function showLoginModal() {
-    const modal = document.getElementById('loginModal');
+    const loginModal = document.getElementById('loginModal');
     const mainContent = document.getElementById('mainContent');
+    const competitorCard = document.getElementById('competitorCard');
     
-    if (modal) {
-        modal.style.display = 'flex';
+    if (loginModal) {
+        loginModal.style.display = 'flex';
     }
     if (mainContent) {
         mainContent.style.display = 'none';
     }
+    if (competitorCard) {
+        competitorCard.style.display = 'none';
+    }
 }
 
-// Show main content
+// Hide login modal and show main content
 function showMainContent() {
-    const modal = document.getElementById('loginModal');
+    const loginModal = document.getElementById('loginModal');
     const mainContent = document.getElementById('mainContent');
     
-    if (modal) {
-        modal.style.display = 'none';
+    if (loginModal) {
+        loginModal.style.display = 'none';
     }
     if (mainContent) {
         mainContent.style.display = 'block';
@@ -52,93 +66,111 @@ function showMainContent() {
 }
 
 // Handle login form submission
-document.addEventListener('DOMContentLoaded', function() {
-    const loginForm = document.getElementById('loginForm');
-    const loginError = document.getElementById('loginError');
+async function handleLogin(event) {
+    event.preventDefault();
     
-    if (loginForm) {
-        loginForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-            
-            // Hide previous errors
-            if (loginError) {
-                loginError.style.display = 'none';
-                loginError.textContent = '';
-            }
-            
-            // Disable submit button
-            const submitBtn = loginForm.querySelector('button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        username: username,
-                        password: password
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {
-                    // Login successful
-                    showMainContent();
-                } else {
-                    // Login failed
-                    if (loginError) {
-                        loginError.textContent = data.error || 'Invalid username or password';
-                        loginError.style.display = 'block';
-                    }
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = originalText;
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                if (loginError) {
-                    loginError.textContent = 'An error occurred. Please try again.';
-                    loginError.style.display = 'block';
-                }
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-            }
-        });
+    const loginForm = document.getElementById('loginForm');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const errorDiv = document.getElementById('loginError');
+    const submitButton = loginForm.querySelector('button[type="submit"]');
+    
+    // Get form values
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+    
+    // Clear previous errors
+    if (errorDiv) {
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
     }
-});
-
-// Logout function (can be called from anywhere)
-async function logout() {
-    try {
-        const response = await fetch('/api/logout', {
-            method: 'POST'
-        });
+    
+    // Validate inputs
+    if (!username || !password) {
+        showLoginError('Please enter both username and password');
+        return;
+    }
+    
+    // Disable submit button and show loading state
+    if (submitButton) {
+        submitButton.disabled = true;
+        const originalText = submitButton.innerHTML;
+        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
         
-        if (response.ok) {
-            showLoginModal();
-            // Clear any form data
-            const loginForm = document.getElementById('loginForm');
-            if (loginForm) {
-                loginForm.reset();
+        try {
+            // Send login request
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include', // Important for session cookies
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // Login successful
+                showMainContent();
+                
+                // Clear form
+                usernameInput.value = '';
+                passwordInput.value = '';
+            } else {
+                // Login failed
+                showLoginError(data.error || 'Invalid username or password');
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            showLoginError('Login failed. Please try again.');
+        } finally {
+            // Re-enable submit button
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalText;
             }
         }
-    } catch (error) {
-        console.error('Logout error:', error);
     }
 }
 
+// Show login error message
+function showLoginError(message) {
+    const errorDiv = document.getElementById('loginError');
+    if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    } else {
+        alert(message);
+    }
+}
 
+// Handle logout
+async function handleLogout() {
+    try {
+        const response = await fetch('/api/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show login modal
+            showLoginModal();
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        // Still show login modal even if logout request fails
+        showLoginModal();
+    }
+}
 
-
-
-
-
-
-
+// Export functions for use in other scripts
+window.checkAuthStatus = checkAuthStatus;
+window.handleLogout = handleLogout;
+window.showLoginModal = showLoginModal;
+window.showMainContent = showMainContent;

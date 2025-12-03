@@ -95,6 +95,7 @@ function displayAllSections(data) {
     displayMetaSeo(data);
     displayPerformanceAnalysis(data);
     displayOrphanPages(data);
+    displayPagePower(data);
     displayAdvancedSEO(data);
     displayDOMAnalysis(data);
     // Update SEO score in summary card from Advanced SEO Audit
@@ -283,39 +284,33 @@ function displayImageAnalyzer(data) {
 // Display keyword analysis section
 function displayKeywords(data) {
     const tbody = document.getElementById('keywordsTableBody');
+    const detailsContainer = document.getElementById('keywordPageDetails');
     const pageFilter = document.getElementById('keywordPageFilter');
     const searchInput = document.getElementById('keywordSearchInput');
 
-    if (!tbody || !pageFilter || !searchInput) return;
+    if (!tbody || !detailsContainer || !pageFilter || !searchInput) return;
 
     const keywordAnalysis = data.keyword_analysis || {};
     const globalTop = keywordAnalysis.global_top_keywords || [];
 
     // Populate global keyword table
     if (globalTop.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">No keyword data available. Try running a new crawl.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4">No keyword data available. Try running a new crawl.</td></tr>';
     } else {
         tbody.innerHTML = '';
         globalTop.forEach(k => {
             const tr = document.createElement('tr');
             tr.dataset.keyword = k.keyword.toLowerCase();
             tr.innerHTML = `
-                <td><strong>${k.keyword}</strong></td>
+                <td>${k.keyword}</td>
                 <td>${k.doc_count}</td>
                 <td>${k.total_count}</td>
                 <td>${k.idf.toFixed(4)}</td>
-                <td>
-                    <button class="btn btn-primary btn-sm" onclick="showKeywordPagesInModal('${k.keyword}', window.crawlData)" title="View pages using this keyword">
-                        <i class="fas fa-eye"></i> View Pages
-                    </button>
-                </td>
             `;
+            tr.onclick = () => showKeywordPages(k.keyword, data);
             tbody.appendChild(tr);
         });
     }
-    
-    // Store data globally for modal access
-    window.crawlData = data;
 
     // Populate page filter
     if (data.pages) {
@@ -354,19 +349,19 @@ function displayKeywords(data) {
 
             row.style.display = show ? '' : 'none';
         });
+
+        // Clear details when filters change
+        detailsContainer.innerHTML = '';
     };
 
     searchInput.addEventListener('input', applyFilter);
     pageFilter.addEventListener('change', applyFilter);
 }
 
-// Show pages where a given keyword appears in a modal
-function showKeywordPagesInModal(keyword, data) {
-    const modal = document.getElementById('keywordModal');
-    const modalTitle = document.getElementById('keywordModalTitle');
-    const modalBody = document.getElementById('keywordModalBody');
-    
-    if (!modal || !modalTitle || !modalBody || !data || !data.pages) return;
+// Show pages where a given keyword appears, with ratios, in the keyword section
+function showKeywordPages(keyword, data) {
+    const container = document.getElementById('keywordPageDetails');
+    if (!container || !data.pages) return;
 
     const lower = keyword.toLowerCase();
     const pagesWithKeyword = [];
@@ -381,23 +376,14 @@ function showKeywordPagesInModal(keyword, data) {
                     word_count: page.word_count,
                     keyword_count: entry.count,
                     tf_idf: entry.tf_idf,
-                    keyword_ratio: page.keywords.keyword_ratio || 0
+                    keyword_ratio: page.keywords.keyword_ratio
                 });
             }
         }
     });
 
-    // Update modal title
-    modalTitle.innerHTML = `<i class="fas fa-key"></i> Keyword: "<strong>${keyword}</strong>"`;
-
     if (pagesWithKeyword.length === 0) {
-        modalBody.innerHTML = `
-            <div class="keyword-empty-state">
-                <i class="fas fa-search" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
-                <p style="font-size: 1.1rem; color: var(--text-muted);">No pages found using keyword "<strong>${keyword}</strong>".</p>
-            </div>
-        `;
-        modal.style.display = 'block';
+        container.innerHTML = `<p>No pages found using keyword "<strong>${keyword}</strong>".</p>`;
         return;
     }
 
@@ -405,23 +391,8 @@ function showKeywordPagesInModal(keyword, data) {
     pagesWithKeyword.sort((a, b) => b.tf_idf - a.tf_idf);
 
     let html = `
-        <div class="keyword-modal-header">
-            <div class="keyword-stats">
-                <div class="stat-item">
-                    <span class="stat-value">${pagesWithKeyword.length}</span>
-                    <span class="stat-label">Pages Found</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">${pagesWithKeyword.reduce((sum, p) => sum + p.keyword_count, 0)}</span>
-                    <span class="stat-label">Total Occurrences</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">${pagesWithKeyword[0].tf_idf.toFixed(4)}</span>
-                    <span class="stat-label">Highest TF-IDF</span>
-                </div>
-            </div>
-        </div>
-        <div class="table-container" style="margin-top: 1.5rem;">
+        <div class="keyword-detail-card">
+            <h3>Pages using "<span>${keyword}</span>"</h3>
             <table class="keyword-pages-table">
                 <thead>
                     <tr>
@@ -430,7 +401,7 @@ function showKeywordPagesInModal(keyword, data) {
                         <th>Keyword Count</th>
                         <th>TF-IDF</th>
                         <th>Keyword Ratio</th>
-                        <th>Actions</th>
+                        <th>View</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -440,16 +411,14 @@ function showKeywordPagesInModal(keyword, data) {
         html += `
             <tr>
                 <td>
-                    <a href="${p.url}" target="_blank" title="${p.url}">${p.title || p.url}</a>
+                    <a href="${p.url}" target="_blank">${p.title || p.url}</a>
                 </td>
-                <td>${(p.word_count || 0).toLocaleString()}</td>
-                <td><strong>${p.keyword_count}</strong></td>
+                <td>${p.word_count || 0}</td>
+                <td>${p.keyword_count}</td>
                 <td>${p.tf_idf.toFixed(4)}</td>
-                <td>${(p.keyword_ratio * 100).toFixed(2)}%</td>
+                <td>${(p.keyword_ratio * 100).toFixed(1)}%</td>
                 <td>
-                    <button class="action-btn action-btn-view" onclick="viewPageFromKeywordModal('${p.url.replace(/'/g, "\\'")}')">
-                        <i class="fas fa-eye"></i> View
-                    </button>
+                    <button class="action-btn action-btn-view" data-url="${p.url}"><i class="fas fa-eye"></i></button>
                 </td>
             </tr>
         `;
@@ -461,26 +430,17 @@ function showKeywordPagesInModal(keyword, data) {
         </div>
     `;
 
-    modalBody.innerHTML = html;
-    modal.style.display = 'block';
-}
+    container.innerHTML = html;
 
-// View page details from keyword modal
-function viewPageFromKeywordModal(url) {
-    if (!window.crawlData || !window.crawlData.pages) return;
-    const page = window.crawlData.pages.find(p => p.url === url);
-    if (page) {
-        closeKeywordModal();
-        showPageDetails(page);
-    }
-}
-
-// Close keyword modal
-function closeKeywordModal() {
-    const modal = document.getElementById('keywordModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    // Wire up "View" buttons to open the existing page modal with full details
+    const buttons = container.querySelectorAll('button.action-btn-view');
+    buttons.forEach(btn => {
+        const url = btn.getAttribute('data-url');
+        const page = data.pages.find(p => p.url === url);
+        if (page) {
+            btn.onclick = () => showPageDetails(page);
+        }
+    });
 }
 
 // Advanced keyword search: user enters any keyword (single or multi-word phrase) and sees counts per page
@@ -703,7 +663,15 @@ function displayBrokenLinks(data) {
                         status: brokenLink.status,
                         status_text: brokenLink.status_text,
                         source_page: page.url,
-                        source_title: page.title
+                        source_title: page.title,
+                        // Location data
+                        anchor_text: brokenLink.anchor_text || '',
+                        parent_tag: brokenLink.parent_tag || '',
+                        parent_class: brokenLink.parent_class || '',
+                        parent_id: brokenLink.parent_id || '',
+                        css_selector: brokenLink.css_selector || '',
+                        context: brokenLink.context || {},
+                        line_number: brokenLink.line_number || 0
                     });
                 });
             }
@@ -718,23 +686,213 @@ function displayBrokenLinks(data) {
     }
     
     container.innerHTML = '';
-    allBrokenLinks.forEach(link => {
+    allBrokenLinks.forEach((link, index) => {
         const item = document.createElement('div');
         item.className = 'broken-link-item';
+        
+        // Build location info string
+        const locationInfo = [];
+        if (link.parent_tag) locationInfo.push(`<${link.parent_tag}>`);
+        if (link.parent_class) locationInfo.push(`.${link.parent_class.split(' ')[0]}`);
+        if (link.parent_id) locationInfo.push(`#${link.parent_id}`);
+        if (link.line_number > 0) locationInfo.push(`Line ${link.line_number}`);
+        
+        const locationStr = locationInfo.length > 0 ? locationInfo.join(' ') : 'Unknown location';
+        const contextBefore = (link.context?.before || '').substring(0, 50);
+        const contextAfter = (link.context?.after || '').substring(0, 50);
+        const anchorDisplay = link.anchor_text || '(no text)';
+        
         item.innerHTML = `
             <div class="broken-link-info">
-                <div class="broken-link-url">
-                    <a href="${link.url}" target="_blank">${link.url}</a>
-                </div>
-                <div class="broken-link-details">
-                    <span class="status-badge status-${link.status >= 400 ? 'error' : 'redirect'}">${link.status_text || 'Error'}</span>
+                <div class="broken-link-header">
+                    <div class="broken-link-url">
+                        <a href="${link.url}" target="_blank">${link.url}</a>
+                    </div>
+                    <div class="broken-link-details">
+                        <span class="status-badge status-${link.status >= 400 ? 'error' : 'redirect'}">${link.status_text || 'Error'}</span>
+                    </div>
                 </div>
                 <div class="broken-link-source">
-                    Found on: <strong><a href="${link.source_page}" target="_blank">${link.source_title || link.source_page}</a></strong>
+                    <i class="fas fa-file-alt"></i> Found on: <strong><a href="${link.source_page}" target="_blank">${link.source_title || link.source_page}</a></strong>
+                </div>
+                <div class="broken-link-location">
+                    <div class="location-info">
+                        <i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> ${locationStr}
+                        ${link.css_selector ? `<span class="css-selector" title="CSS Selector: ${link.css_selector}">${link.css_selector.length > 60 ? link.css_selector.substring(0, 60) + '...' : link.css_selector}</span>` : ''}
+                    </div>
+                    ${link.anchor_text ? `<div class="anchor-text"><i class="fas fa-link"></i> <strong>Link Text:</strong> "${anchorDisplay}"</div>` : ''}
+                    ${(contextBefore || contextAfter) ? `
+                        <div class="link-context">
+                            <i class="fas fa-quote-left"></i> <strong>Context:</strong>
+                            ${contextBefore ? `<span class="context-before">...${contextBefore}</span>` : ''}
+                            <span class="link-highlight">${anchorDisplay}</span>
+                            ${contextAfter ? `<span class="context-after">${contextAfter}...</span>` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="broken-link-actions">
+                    <button class="btn btn-sm btn-primary" onclick="viewLinkOnPage('${link.source_page}', '${link.css_selector.replace(/'/g, "\\'")}', ${index})">
+                        <i class="fas fa-eye"></i> View on Page
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="showLinkLocationDetails(${index})">
+                        <i class="fas fa-info-circle"></i> Details
+                    </button>
                 </div>
             </div>
         `;
         container.appendChild(item);
+    });
+    
+    // Store broken links data globally for modal access
+    window.brokenLinksData = allBrokenLinks;
+}
+
+// View link on source page with highlight
+function viewLinkOnPage(pageUrl, cssSelector, linkIndex) {
+    // Open page in new window with highlight script
+    const newWindow = window.open(pageUrl, '_blank');
+    
+    if (newWindow) {
+        newWindow.onload = function() {
+            try {
+                // Inject highlight script
+                const script = `
+                    (function() {
+                        try {
+                            const selector = ${JSON.stringify(cssSelector)};
+                            const element = document.querySelector(selector);
+                            if (element) {
+                                element.style.outline = '3px solid #ff0000';
+                                element.style.outlineOffset = '2px';
+                                element.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                
+                                // Remove highlight after 5 seconds
+                                setTimeout(() => {
+                                    element.style.outline = '';
+                                    element.style.outlineOffset = '';
+                                    element.style.backgroundColor = '';
+                                }, 5000);
+                            } else {
+                                alert('Link element not found on page. It may have been removed or changed.');
+                            }
+                        } catch(e) {
+                            console.error('Error highlighting element:', e);
+                        }
+                    })();
+                `;
+                newWindow.eval(script);
+            } catch (e) {
+                console.error('Error opening page:', e);
+                alert('Could not highlight link on page. Please check the page manually.');
+            }
+        };
+    }
+}
+
+// Show detailed location information
+function showLinkLocationDetails(linkIndex) {
+    if (!window.brokenLinksData || !window.brokenLinksData[linkIndex]) return;
+    
+    const link = window.brokenLinksData[linkIndex];
+    
+    let modalHtml = `
+        <div class="modal" id="linkLocationModal" style="display: block;">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    <h2><i class="fas fa-map-marker-alt"></i> Link Location Details</h2>
+                    <span class="close" onclick="closeLinkLocationModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-link"></i> Broken Link</h3>
+                        <p><a href="${link.url}" target="_blank">${link.url}</a></p>
+                    </div>
+                    
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-file-alt"></i> Source Page</h3>
+                        <p><a href="${link.source_page}" target="_blank">${link.source_title || link.source_page}</a></p>
+                    </div>
+                    
+                    ${link.css_selector ? `
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-code"></i> CSS Selector</h3>
+                        <code class="css-selector-code">${link.css_selector}</code>
+                        <button class="btn btn-sm btn-secondary" onclick="copyToClipboard('${link.css_selector.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    ` : ''}
+                    
+                    ${link.parent_tag ? `
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-sitemap"></i> Parent Element</h3>
+                        <ul class="location-list">
+                            <li><strong>Tag:</strong> <code>&lt;${link.parent_tag}&gt;</code></li>
+                            ${link.parent_class ? `<li><strong>Class:</strong> <code>.${link.parent_class}</code></li>` : ''}
+                            ${link.parent_id ? `<li><strong>ID:</strong> <code>#${link.parent_id}</code></li>` : ''}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    
+                    ${link.line_number > 0 ? `
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-list-ol"></i> Line Number</h3>
+                        <p>Approximate line: <strong>${link.line_number}</strong></p>
+                    </div>
+                    ` : ''}
+                    
+                    ${link.anchor_text ? `
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-font"></i> Anchor Text</h3>
+                        <p>"${link.anchor_text}"</p>
+                    </div>
+                    ` : ''}
+                    
+                    ${link.context && (link.context.before || link.context.after) ? `
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-quote-left"></i> Surrounding Context</h3>
+                        <div class="context-display">
+                            ${link.context.before ? `<span class="context-before">${link.context.before}</span>` : ''}
+                            <span class="link-highlight">${link.anchor_text || link.url}</span>
+                            ${link.context.after ? `<span class="context-after">${link.context.after}</span>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="location-details-actions">
+                        <button class="btn btn-primary" onclick="viewLinkOnPage('${link.source_page}', '${link.css_selector.replace(/'/g, "\\'")}', ${linkIndex})">
+                            <i class="fas fa-eye"></i> View on Page
+                        </button>
+                        <button class="btn btn-secondary" onclick="closeLinkLocationModal()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeLinkLocationModal() {
+    const modal = document.getElementById('linkLocationModal');
+    if (modal) modal.remove();
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard!');
+    }).catch(() => {
+        // Fallback
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('Copied to clipboard!');
     });
 }
 
@@ -1313,6 +1471,26 @@ function createTableRow(page, index) {
     }
     tr.appendChild(similarityCell);
     
+    // Page Power
+    const pagePowerCell = document.createElement('td');
+    const pagePower = page.page_power;
+    if (pagePower !== undefined && pagePower !== null) {
+        const powerSpan = document.createElement('span');
+        powerSpan.className = 'page-power-score';
+        if (pagePower >= 80) {
+            powerSpan.className += ' power-high';
+        } else if (pagePower >= 50) {
+            powerSpan.className += ' power-medium';
+        } else {
+            powerSpan.className += ' power-low';
+        }
+        powerSpan.textContent = pagePower.toFixed(1);
+        pagePowerCell.appendChild(powerSpan);
+    } else {
+        pagePowerCell.textContent = '-';
+    }
+    tr.appendChild(pagePowerCell);
+    
     // Broken Links
     const brokenLinksCell = document.createElement('td');
     const brokenCount = page.broken_links ? page.broken_links.length : 0;
@@ -1424,7 +1602,10 @@ function showPageDetails(page) {
             <h3><i class="fas fa-link"></i> Internal Links (${page.internal_links ? page.internal_links.length : 0})</h3>
             ${page.internal_links && page.internal_links.length > 0 ? `
                 <ul class="modal-links">
-                    ${page.internal_links.slice(0, 20).map(url => `<li><a href="${url}" target="_blank">${url}</a></li>`).join('')}
+                    ${page.internal_links.slice(0, 20).map(link => {
+                        const url = typeof link === 'string' ? link : (link.url || '');
+                        return `<li><a href="${url}" target="_blank">${url}</a></li>`;
+                    }).join('')}
                     ${page.internal_links.length > 20 ? `<li><em>... and ${page.internal_links.length - 20} more</em></li>` : ''}
                 </ul>
             ` : '<p>No internal links found.</p>'}
@@ -1946,149 +2127,61 @@ function displayPerformanceAnalysis(data) {
         });
     }
     
-    // Update performance summary stats
-    const summary = document.getElementById('performanceSummary');
-    if (summary) {
-        const summaryHeavyImages = document.getElementById('summaryHeavyImages');
-        const summarySlowFiles = document.getElementById('summarySlowFiles');
-        const summarySlowSections = document.getElementById('summarySlowSections');
-        const summarySlowComponents = document.getElementById('summarySlowComponents');
-        const summaryRenderBlocking = document.getElementById('summaryRenderBlocking');
-        
-        if (summaryHeavyImages) summaryHeavyImages.textContent = allHeavyImages.length;
-        if (summarySlowFiles) summarySlowFiles.textContent = allSlowJsCss.length;
-        if (summarySlowSections) summarySlowSections.textContent = allSlowHtmlSections.length;
-        if (summarySlowComponents) summarySlowComponents.textContent = allSlowComponents.length;
-        if (summaryRenderBlocking) summaryRenderBlocking.textContent = allRenderBlocking.length;
-        
-        summary.style.display = 'grid';
-    }
-    
-    // Display heavy images with improved structure
+    // Display heavy images
     if (allHeavyImages.length === 0) {
-        heavyImagesContainer.innerHTML = `
-            <div class="performance-empty">
-                <i class="fas fa-check-circle"></i>
-                <p>No heavy images detected. Great job! 🎉</p>
-            </div>
-        `;
+        heavyImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No heavy images detected.</p></div>';
     } else {
-        // Update column header with count
-        const heavyImagesHeader = document.querySelector('.performance-column:first-of-type h3');
-        if (heavyImagesHeader && !heavyImagesHeader.querySelector('.performance-column-count')) {
-            const countBadge = document.createElement('span');
-            countBadge.className = 'performance-column-count';
-            countBadge.textContent = allHeavyImages.length;
-            heavyImagesHeader.appendChild(countBadge);
-        }
-        
         let html = '<ul class="performance-list">';
         allHeavyImages.slice(0, 50).forEach(img => {
             const sizeDisplay = img.size_mb >= 1 ? `${img.size_mb.toFixed(2)} MB` : `${img.size_kb.toFixed(2)} KB`;
-            const sizeClass = img.size_mb >= 1 ? 'danger' : 'warning';
             html += `
-                <li class="performance-item ${sizeClass}">
+                <li class="performance-item">
                     <div class="performance-item-header">
-                        <strong>
-                            <i class="fas fa-image"></i>
-                            ${sizeDisplay}
-                        </strong>
-                        <span class="badge badge-${sizeClass}">Heavy Image</span>
+                        <strong>${sizeDisplay}</strong>
+                        <span class="badge badge-warning">Heavy</span>
                     </div>
                     <div class="performance-item-content">
-                        <div>
-                            <strong>Image URL:</strong>
-                            <a href="${img.url}" target="_blank" title="${img.url}">${img.url.length > 50 ? img.url.substring(0, 50) + '...' : img.url}</a>
+                        <div><strong>Image:</strong> <a href="${img.url}" target="_blank">${img.url.substring(0, 60)}${img.url.length > 60 ? '...' : ''}</a></div>
+                        <div><strong>Page:</strong> <a href="${img.page_url}" target="_blank">${img.page_title}</a></div>
+                        <div><strong>Location:</strong> ${img.location}</div>
+                        ${img.width && img.height ? `<div><strong>Dimensions:</strong> ${img.width}×${img.height}px</div>` : ''}
+                        <div><strong>Format:</strong> ${img.format}</div>
+                        <div class="performance-highlight" style="border: 2px solid #ffc107; padding: 5px; margin-top: 5px; background: #fff3cd;">
+                            <strong>HTML:</strong> <code>${img.html_snippet}</code>
                         </div>
-                        <div>
-                            <strong>Page:</strong>
-                            <a href="${img.page_url}" target="_blank">${img.page_title || img.page_url}</a>
-                        </div>
-                        <div>
-                            <strong>Location:</strong>
-                            <span class="performance-item-meta">${img.location || 'N/A'}</span>
-                        </div>
-                        ${img.width && img.height ? `
-                            <div>
-                                <strong>Dimensions:</strong>
-                                <span class="performance-item-meta">${img.width}×${img.height}px</span>
-                            </div>
-                        ` : ''}
-                        <div>
-                            <strong>Format:</strong>
-                            <span class="performance-item-meta">${img.format || 'Unknown'}</span>
-                        </div>
-                        ${img.html_snippet ? `
-                            <div class="performance-highlight">
-                                <code>${img.html_snippet}</code>
-                            </div>
-                        ` : ''}
                     </div>
                 </li>
             `;
         });
         if (allHeavyImages.length > 50) {
-            html += `<li style="text-align: center; padding: var(--space-md); color: var(--text-muted); font-style: italic;">
-                <i class="fas fa-info-circle"></i> Showing 50 of ${allHeavyImages.length} heavy images
-            </li>`;
+            html += `<li><em>... and ${allHeavyImages.length - 50} more heavy images</em></li>`;
         }
         html += '</ul>';
         heavyImagesContainer.innerHTML = html;
     }
     
-    // Display slow JS/CSS with improved structure
+    // Display slow JS/CSS
     if (allSlowJsCss.length === 0) {
-        slowJsCssContainer.innerHTML = `
-            <div class="performance-empty">
-                <i class="fas fa-check-circle"></i>
-                <p>No large JS/CSS files detected. Excellent! ✨</p>
-            </div>
-        `;
+        slowJsCssContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large JS/CSS files detected.</p></div>';
     } else {
-        // Update column header with count
-        const jsCssHeader = document.querySelectorAll('.performance-column')[1]?.querySelector('h3');
-        if (jsCssHeader && !jsCssHeader.querySelector('.performance-column-count')) {
-            const countBadge = document.createElement('span');
-            countBadge.className = 'performance-column-count';
-            countBadge.textContent = allSlowJsCss.length;
-            jsCssHeader.appendChild(countBadge);
-        }
-        
         let html = '<ul class="performance-list">';
         allSlowJsCss.slice(0, 30).forEach(file => {
-            const fileIcon = file.type === 'JS' ? 'fa-file-code' : 'fa-file-alt';
             html += `
-                <li class="performance-item info">
+                <li class="performance-item">
                     <div class="performance-item-header">
-                        <strong>
-                            <i class="fas ${fileIcon}"></i>
-                            ${file.size_kb.toFixed(2)} KB
-                        </strong>
+                        <strong>${file.size_kb.toFixed(2)} KB</strong>
                         <span class="badge badge-info">${file.type}</span>
                     </div>
                     <div class="performance-item-content">
-                        <div>
-                            <strong>File URL:</strong>
-                            <a href="${file.url}" target="_blank" title="${file.url}">${file.url.length > 50 ? file.url.substring(0, 50) + '...' : file.url}</a>
-                        </div>
-                        <div>
-                            <strong>Page:</strong>
-                            <a href="${file.page_url}" target="_blank">${file.page_title || file.page_url}</a>
-                        </div>
-                        ${file.is_render_blocking ? `
-                            <div>
-                                <strong>Status:</strong>
-                                <span class="badge badge-danger">Render-Blocking</span>
-                            </div>
-                        ` : ''}
+                        <div><strong>File:</strong> <a href="${file.url}" target="_blank">${file.url.substring(0, 60)}${file.url.length > 60 ? '...' : ''}</a></div>
+                        <div><strong>Page:</strong> <a href="${file.page_url}" target="_blank">${file.page_title}</a></div>
+                        ${file.is_render_blocking ? '<div><span class="badge badge-danger">Render-Blocking</span></div>' : ''}
                     </div>
                 </li>
             `;
         });
         if (allSlowJsCss.length > 30) {
-            html += `<li style="text-align: center; padding: var(--space-md); color: var(--text-muted); font-style: italic;">
-                <i class="fas fa-info-circle"></i> Showing 30 of ${allSlowJsCss.length} files
-            </li>`;
+            html += `<li><em>... and ${allSlowJsCss.length - 30} more files</em></li>`;
         }
         html += '</ul>';
         slowJsCssContainer.innerHTML = html;
@@ -2157,63 +2250,26 @@ function displayPerformanceAnalysis(data) {
         slowComponentsContainer.innerHTML = html;
     }
     
-    // Display render-blocking resources with improved structure
+    // Display render-blocking resources
     if (allRenderBlocking.length === 0) {
-        renderBlockingContainer.innerHTML = `
-            <div class="performance-empty">
-                <i class="fas fa-check-circle"></i>
-                <p>No render-blocking resources detected. Perfect! 🚀</p>
-            </div>
-        `;
+        renderBlockingContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No render-blocking resources detected.</p></div>';
     } else {
-        // Update column header with count
-        const renderBlockingHeader = document.querySelector('.performance-column.full-width h3');
-        if (renderBlockingHeader && !renderBlockingHeader.querySelector('.performance-column-count')) {
-            const countBadge = document.createElement('span');
-            countBadge.className = 'performance-column-count';
-            countBadge.textContent = allRenderBlocking.length;
-            renderBlockingHeader.appendChild(countBadge);
-        }
-        
         let html = '<ul class="performance-list">';
         allRenderBlocking.forEach(resource => {
             html += `
-                <li class="performance-item danger">
+                <li class="performance-item">
                     <div class="performance-item-header">
-                        <strong>
-                            <i class="fas fa-ban"></i>
-                            ${resource.type}
-                        </strong>
+                        <strong>${resource.type}</strong>
                         <span class="badge badge-danger">Render-Blocking</span>
                     </div>
                     <div class="performance-item-content">
-                        <div>
-                            <strong>Resource URL:</strong>
-                            <a href="${resource.url}" target="_blank" title="${resource.url}">${resource.url.length > 50 ? resource.url.substring(0, 50) + '...' : resource.url}</a>
-                        </div>
-                        <div>
-                            <strong>Page:</strong>
-                            <a href="${resource.page_url}" target="_blank">${resource.page_title || resource.page_url}</a>
-                        </div>
-                        <div>
-                            <strong>Size:</strong>
-                            <span class="performance-item-meta">${resource.size_kb.toFixed(2)} KB</span>
-                        </div>
-                        ${resource.has_async !== undefined ? `
-                            <div>
-                                <strong>Async:</strong>
-                                <span class="performance-item-meta ${resource.has_async ? 'badge-success' : 'badge-danger'}">${resource.has_async ? 'Yes ✓' : 'No ✗'}</span>
-                            </div>
-                        ` : ''}
-                        ${resource.has_defer !== undefined ? `
-                            <div>
-                                <strong>Defer:</strong>
-                                <span class="performance-item-meta ${resource.has_defer ? 'badge-success' : 'badge-danger'}">${resource.has_defer ? 'Yes ✓' : 'No ✗'}</span>
-                            </div>
-                        ` : ''}
+                        <div><strong>Resource:</strong> <a href="${resource.url}" target="_blank">${resource.url.substring(0, 60)}${resource.url.length > 60 ? '...' : ''}</a></div>
+                        <div><strong>Page:</strong> <a href="${resource.page_url}" target="_blank">${resource.page_title}</a></div>
+                        <div><strong>Size:</strong> ${resource.size_kb.toFixed(2)} KB</div>
+                        ${resource.has_async !== undefined ? `<div><strong>Async:</strong> ${resource.has_async ? 'Yes' : 'No'}</div>` : ''}
+                        ${resource.has_defer !== undefined ? `<div><strong>Defer:</strong> ${resource.has_defer ? 'Yes' : 'No'}</div>` : ''}
                         <div class="performance-suggestion">
-                            <strong><i class="fas fa-lightbulb"></i> Suggestion:</strong>
-                            Add <code>async</code> or <code>defer</code> attribute to prevent render-blocking.
+                            <strong>💡 Suggestion:</strong> Add <code>async</code> or <code>defer</code> attribute to prevent render-blocking.
                         </div>
                     </div>
                 </li>
@@ -2242,6 +2298,418 @@ function updateSeoScoreSummary(data) {
         } else {
             siteSeoScore.textContent = 'N/A';
         }
+    }
+}
+
+// Display Page Power section
+function displayPagePower(data) {
+    const container = document.getElementById('pagePowerContainer');
+    if (!container) return;
+    
+    const stats = data.page_power_stats || {};
+    const pages = data.pages || [];
+    const linkAnalysis = stats.link_analysis || {};
+    
+    if (!stats || !stats.top_pages || stats.top_pages.length === 0) {
+        container.innerHTML = '<div class="info-message"><i class="fas fa-info-circle"></i><p>Page Power data not available. Run a new crawl to generate page power analysis.</p></div>';
+        return;
+    }
+    
+    // Sort all pages by page power
+    const pagesWithPower = pages
+        .filter(p => p.page_power !== undefined && p.page_power !== null)
+        .map(p => {
+            const linkData = linkAnalysis[p.url] || {};
+            return {
+                url: p.url,
+                title: p.title || 'No Title',
+                power: p.page_power,
+                word_count: p.word_count || 0,
+                status_code: p.status_code,
+                incoming_count: linkData.incoming_count || 0,
+                outgoing_count: linkData.outgoing_count || 0
+            };
+        })
+        .sort((a, b) => b.power - a.power);
+    
+    // Power distribution data
+    const powerDist = stats.power_distribution || { high: 0, medium: 0, low: 0 };
+    const totalDist = powerDist.high + powerDist.medium + powerDist.low;
+    
+    let html = `
+        <div class="page-power-summary">
+            <div class="power-stats-grid">
+                <div class="power-stat-item">
+                    <div class="stat-value">${stats.total_pages || 0}</div>
+                    <div class="stat-label">Total Pages</div>
+                </div>
+                <div class="power-stat-item">
+                    <div class="stat-value">${stats.average_power || 0}</div>
+                    <div class="stat-label">Average Power</div>
+                </div>
+                <div class="power-stat-item">
+                    <div class="stat-value">${stats.highest_power || 0}</div>
+                    <div class="stat-label">Highest Power</div>
+                </div>
+                <div class="power-stat-item">
+                    <div class="stat-value">${stats.lowest_power || 0}</div>
+                    <div class="stat-label">Lowest Power</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Power Distribution Chart -->
+        <div class="page-power-chart-section">
+            <h3><i class="fas fa-chart-pie"></i> Power Distribution</h3>
+            <div class="power-distribution-chart">
+                <canvas id="powerDistributionChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+        
+        <!-- Orphan Pages Section -->
+        ${stats.orphan_pages && stats.orphan_pages.length > 0 ? `
+        <div class="orphan-pages-section">
+            <h3><i class="fas fa-unlink"></i> Orphan Pages (${stats.orphan_pages.length})</h3>
+            <p class="section-description">Pages with no incoming internal links. These pages may be harder for search engines and users to discover.</p>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Page Power</th>
+                            <th>Word Count</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${stats.orphan_pages.map(page => `
+                            <tr>
+                                <td>
+                                    <div class="page-url-cell">
+                                        <a href="${page.url}" target="_blank">${page.url}</a>
+                                        ${page.title ? `<div class="page-title-small">${page.title}</div>` : ''}
+                                    </div>
+                                </td>
+                                <td><span class="page-power-badge power-low">${page.power.toFixed(1)}</span></td>
+                                <td>${(page.word_count || 0).toLocaleString()}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="showPageLinkAnalysis('${page.url}')">
+                                        <i class="fas fa-link"></i> Link Analysis
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        ` : ''}
+        
+        <!-- Hub Pages Section -->
+        ${stats.hub_pages && stats.hub_pages.length > 0 ? `
+        <div class="hub-pages-section">
+            <h3><i class="fas fa-sitemap"></i> Hub Pages (Top 10)</h3>
+            <p class="section-description">Pages with the most outgoing internal links. These pages distribute link equity across your site.</p>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Page</th>
+                            <th>Outgoing Links</th>
+                            <th>Page Power</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${stats.hub_pages.map(page => `
+                            <tr>
+                                <td>
+                                    <div class="page-url-cell">
+                                        <a href="${page.url}" target="_blank">${page.url}</a>
+                                        ${page.title ? `<div class="page-title-small">${page.title}</div>` : ''}
+                                    </div>
+                                </td>
+                                <td><strong>${page.outgoing_links}</strong></td>
+                                <td><span class="page-power-badge ${page.power >= 70 ? 'power-high' : page.power >= 40 ? 'power-medium' : 'power-low'}">${page.power.toFixed(1)}</span></td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="showPageLinkAnalysis('${page.url}')">
+                                        <i class="fas fa-link"></i> Link Analysis
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        ` : ''}
+        
+        <!-- Pages Ranked by Power -->
+        <div class="page-power-table-container">
+            <h3><i class="fas fa-list"></i> All Pages Ranked by Power</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Page</th>
+                            <th>Page Power</th>
+                            <th>Incoming Links</th>
+                            <th>Outgoing Links</th>
+                            <th>Word Count</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+    
+    pagesWithPower.forEach((page, index) => {
+        const powerClass = page.power >= 70 ? 'power-high' : 
+                          page.power >= 40 ? 'power-medium' : 'power-low';
+        
+        html += `
+            <tr>
+                <td><strong>#${index + 1}</strong></td>
+                <td>
+                    <div class="page-url-cell">
+                        <a href="${page.url}" target="_blank">${page.url}</a>
+                        ${page.title ? `<div class="page-title-small">${page.title}</div>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <span class="page-power-badge ${powerClass}">${page.power.toFixed(1)}</span>
+                </td>
+                <td><span class="badge badge-info">${page.incoming_count}</span></td>
+                <td><span class="badge badge-info">${page.outgoing_count}</span></td>
+                <td>${page.word_count.toLocaleString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="showPageLinkAnalysis('${page.url}')" title="View Link Analysis">
+                        <i class="fas fa-link"></i>
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="showPageDetailsByUrl('${page.url}')" title="View Details">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Render power distribution chart
+    if (typeof Chart !== 'undefined' && totalDist > 0) {
+        const ctx = document.getElementById('powerDistributionChart');
+        if (ctx) {
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['High Power (≥70)', 'Medium Power (40-69)', 'Low Power (<40)'],
+                    datasets: [{
+                        data: [powerDist.high, powerDist.medium, powerDist.low],
+                        backgroundColor: [
+                            'rgba(17, 153, 142, 0.8)',
+                            'rgba(245, 87, 108, 0.8)',
+                            'rgba(79, 172, 254, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(17, 153, 142, 1)',
+                            'rgba(245, 87, 108, 1)',
+                            'rgba(79, 172, 254, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const percentage = ((value / totalDist) * 100).toFixed(1);
+                                    return label + ': ' + value + ' pages (' + percentage + '%)';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+}
+
+// Show page link analysis modal
+function showPageLinkAnalysis(url) {
+    if (!reportData || !reportData.page_power_stats) return;
+    
+    const linkAnalysis = reportData.page_power_stats.link_analysis || {};
+    const pageData = linkAnalysis[url];
+    
+    if (!pageData) {
+        alert('Link analysis data not available for this page.');
+        return;
+    }
+    
+    const page = reportData.pages.find(p => p.url === url) || {};
+    const power = page.page_power || 0;
+    const powerClass = power >= 70 ? 'power-high' : power >= 40 ? 'power-medium' : 'power-low';
+    
+    // Truncate title if too long
+    const displayTitle = (page.title || url).length > 60 
+        ? (page.title || url).substring(0, 60) + '...' 
+        : (page.title || url);
+    
+    let modalHtml = `
+        <div class="modal" id="linkAnalysisModal" style="display: block;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-link"></i> ${displayTitle}</h2>
+                    <span class="close" onclick="closeLinkAnalysisModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="link-analysis-summary">
+                        <div class="link-stat-card">
+                            <div class="link-stat-value">${power.toFixed(1)}</div>
+                            <div class="link-stat-label">Page Power</div>
+                        </div>
+                        <div class="link-stat-card">
+                            <div class="link-stat-value">${pageData.incoming_count || 0}</div>
+                            <div class="link-stat-label">Incoming</div>
+                        </div>
+                        <div class="link-stat-card">
+                            <div class="link-stat-value">${pageData.outgoing_count || 0}</div>
+                            <div class="link-stat-label">Outgoing</div>
+                        </div>
+                    </div>
+                    
+                    <div class="link-analysis-grid">
+                        <div class="link-analysis-column">
+                            <h3><i class="fas fa-arrow-down"></i> Incoming (${pageData.incoming_links.length})</h3>
+                            <div class="link-list">
+                                ${pageData.incoming_links.length > 0 ? 
+                                    pageData.incoming_links.map(link => `
+                                        <div class="link-item">
+                                            <a href="${link.url}" target="_blank" title="${link.url}">${link.url.length > 50 ? link.url.substring(0, 50) + '...' : link.url}</a>
+                                            <div class="link-meta">
+                                                <span class="page-title-small" title="${link.title}">${link.title.length > 40 ? link.title.substring(0, 40) + '...' : link.title}</span>
+                                                <span class="page-power-badge ${link.power >= 70 ? 'power-high' : link.power >= 40 ? 'power-medium' : 'power-low'}">${link.power.toFixed(1)}</span>
+                                            </div>
+                                        </div>
+                                    `).join('') 
+                                    : '<div class="link-item"><p style="margin:0; color: var(--text-muted); font-size: 0.75rem;">No incoming links</p></div>'
+                                }
+                            </div>
+                        </div>
+                        
+                        <div class="link-analysis-column">
+                            <h3><i class="fas fa-arrow-up"></i> Outgoing (${pageData.outgoing_links.length})</h3>
+                            <div class="link-list">
+                                ${pageData.outgoing_links.length > 0 ? 
+                                    pageData.outgoing_links.map(link => `
+                                        <div class="link-item">
+                                            <a href="${link.url}" target="_blank" title="${link.url}">${link.url.length > 50 ? link.url.substring(0, 50) + '...' : link.url}</a>
+                                            <div class="link-meta">
+                                                <span class="page-title-small" title="${link.title}">${link.title.length > 40 ? link.title.substring(0, 40) + '...' : link.title}</span>
+                                                <span class="page-power-badge ${link.power >= 70 ? 'power-high' : link.power >= 40 ? 'power-medium' : 'power-low'}">${link.power.toFixed(1)}</span>
+                                            </div>
+                                        </div>
+                                    `).join('') 
+                                    : '<div class="link-item"><p style="margin:0; color: var(--text-muted); font-size: 0.75rem;">No outgoing links</p></div>'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${generateLinkRecommendations(pageData, power)}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeLinkAnalysisModal() {
+    const modal = document.getElementById('linkAnalysisModal');
+    if (modal) modal.remove();
+}
+
+function generateLinkRecommendations(pageData, power) {
+    const recommendations = [];
+    
+    if (pageData.incoming_count === 0) {
+        recommendations.push({
+            type: 'warning',
+            message: 'This page has no incoming links. Consider adding internal links from high-power pages to improve discoverability.'
+        });
+    }
+    
+    if (pageData.incoming_count < 3 && power < 50) {
+        recommendations.push({
+            type: 'info',
+            message: 'Low incoming link count may be limiting this page\'s power. Consider getting links from pages with higher power.'
+        });
+    }
+    
+    if (pageData.outgoing_count === 0) {
+        recommendations.push({
+            type: 'info',
+            message: 'This page doesn\'t link to other pages. Consider adding relevant internal links to help distribute link equity.'
+        });
+    }
+    
+    if (pageData.outgoing_count > 50) {
+        recommendations.push({
+            type: 'warning',
+            message: 'This page has many outgoing links. Consider reducing the number to pass more link equity to fewer pages.'
+        });
+    }
+    
+    if (power < 30 && pageData.incoming_count > 0) {
+        recommendations.push({
+            type: 'info',
+            message: 'Low power despite having incoming links. The linking pages may have low power themselves.'
+        });
+    }
+    
+    if (recommendations.length === 0) {
+        recommendations.push({
+            type: 'success',
+            message: 'This page has a good internal linking structure!'
+        });
+    }
+    
+    return `
+        <div class="link-recommendations">
+            <h3><i class="fas fa-lightbulb"></i> Recommendations</h3>
+            ${recommendations.map(rec => `
+                <div class="recommendation-item recommendation-${rec.type}">
+                    <i class="fas fa-${rec.type === 'warning' ? 'exclamation-triangle' : rec.type === 'info' ? 'info-circle' : 'check-circle'}"></i>
+                    <p>${rec.message}</p>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Helper function to show page details by URL
+function showPageDetailsByUrl(url) {
+    if (!reportData || !reportData.pages) return;
+    const page = reportData.pages.find(p => p.url === url);
+    if (page) {
+        showPageDetails(page);
     }
 }
 
@@ -2437,7 +2905,7 @@ function displayAdvancedSEO(data) {
                     <option value="warnings">Has Warnings</option>
                 </select>
             </div>
-            <div class="table-container">
+            <div class="table-container" style="font-size: 0.5rem;">
                 <table id="auditTable">
                     <thead>
                         <tr>

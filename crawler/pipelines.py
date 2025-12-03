@@ -109,16 +109,32 @@ class ContentProcessingPipeline:
 class DuplicateDetectionPipeline:
     """
     Pipeline to detect exact and near-duplicate content.
+    Uses advanced MinHash+LSH techniques similar to Siteliner for efficient detection.
     """
     
     def __init__(self):
         self.hash_to_urls: Dict[str, List[str]] = {}  # hash -> list of URLs
         self.url_to_content: Dict[str, str] = {}  # url -> normalized content
         self.processed_items: List[PageItem] = []  # Store all items for similarity comparison
+        
+        # Try to use advanced DuplicateContentAnalyzer if available
+        self.advanced_analyzer = None
+        try:
+            import sys
+            import os as os_module
+            current_dir = os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__)))
+            sys.path.insert(0, current_dir)
+            from duplicate_content_analyzer import DuplicateContentAnalyzer
+            # Use MinHash+LSH for efficient similarity detection (similar to Siteliner)
+            self.advanced_analyzer = DuplicateContentAnalyzer(min_similarity=0.40, use_minhash=True)
+        except (ImportError, Exception) as e:
+            # Fallback to basic method if advanced analyzer not available
+            self.advanced_analyzer = None
     
     def process_item(self, item: PageItem, spider) -> PageItem:
         """
         Detect duplicates for the current item.
+        Uses advanced MinHash+LSH if available, otherwise falls back to basic method.
         
         Args:
             item: The PageItem to check for duplicates
@@ -130,6 +146,7 @@ class DuplicateDetectionPipeline:
         url = item['url']
         content_hash = item.get('content_hash', '')
         text_content = item.get('text_content', '')
+        html_content = item.get('html_content', '')
         
         # Store content for similarity comparison
         self.url_to_content[url] = text_content
@@ -151,18 +168,58 @@ class DuplicateDetectionPipeline:
         item['is_duplicate'] = len(duplicate_urls) > 0
         item['duplicate_urls'] = duplicate_urls
         
-        # Calculate similarity scores with previously processed pages
-        similarity_scores = {}
-        for processed_item in self.processed_items:
-            other_url = processed_item['url']
-            other_content = self.url_to_content.get(other_url, '')
+        # Use advanced analyzer if available (MinHash+LSH similar to Siteliner)
+        if self.advanced_analyzer:
+            try:
+                # Process page with advanced analyzer
+                self.advanced_analyzer.process_page(url, text_content, html_content)
+                
+                # Find candidates using LSH
+                signature = self.advanced_analyzer.url_to_signature.get(url)
+                if signature:
+                    candidates = self.advanced_analyzer.minhash_lsh.find_candidates(url, signature)
+                    
+                    # Calculate similarity for candidates
+                    similarity_scores = {}
+                    text1 = text_content
+                    for candidate_url in candidates:
+                        text2 = self.url_to_content.get(candidate_url, '')
+                        if text2:
+                            similarity = self.advanced_analyzer.calculate_similarity(
+                                text1, text2, url, candidate_url
+                            )
+                            if similarity >= 0.40:  # Only store if similarity >= 40%
+                                similarity_scores[candidate_url] = round(similarity * 100, 2)
+                    
+                    item['similarity_scores'] = similarity_scores
+                else:
+                    item['similarity_scores'] = {}
+            except Exception as e:
+                # Fallback to basic method if advanced analyzer fails
+                similarity_scores = {}
+                for processed_item in self.processed_items:
+                    other_url = processed_item['url']
+                    other_content = self.url_to_content.get(other_url, '')
+                    
+                    if other_content and text_content:
+                        similarity = self._calculate_similarity(text_content, other_content)
+                        if similarity > 0.4:
+                            similarity_scores[other_url] = round(similarity * 100, 2)
+                
+                item['similarity_scores'] = similarity_scores
+        else:
+            # Fallback to basic method
+            similarity_scores = {}
+            for processed_item in self.processed_items:
+                other_url = processed_item['url']
+                other_content = self.url_to_content.get(other_url, '')
+                
+                if other_content and text_content:
+                    similarity = self._calculate_similarity(text_content, other_content)
+                    if similarity > 0.4:  # Only store if similarity > 40%
+                        similarity_scores[other_url] = round(similarity * 100, 2)
             
-            if other_content and text_content:
-                similarity = self._calculate_similarity(text_content, other_content)
-                if similarity > 0.4:  # Only store if similarity > 40%
-                    similarity_scores[other_url] = round(similarity * 100, 2)
-        
-        item['similarity_scores'] = similarity_scores
+            item['similarity_scores'] = similarity_scores
         
         # Store this item for future comparisons
         self.processed_items.append(item)
@@ -190,8 +247,42 @@ class DuplicateDetectionPipeline:
     def close_spider(self, spider):
         """
         Called when spider closes. Can be used for final processing.
+        Performs final similarity analysis using advanced techniques if available.
         """
-        pass
+        # If advanced analyzer is available, perform final comprehensive analysis
+        if self.advanced_analyzer and len(self.processed_items) > 0:
+            try:
+                # Re-analyze all items with comprehensive MinHash+LSH
+                # This ensures we catch all similarities that might have been missed during incremental processing
+                print(f"Performing final similarity analysis using MinHash+LSH (similar to Siteliner)...")
+                
+                # Find all duplicates using advanced method
+                def progress_callback(progress, message):
+                    if progress % 20 == 0:
+                        print(f"Similarity analysis: {progress}% - {message}")
+                
+                duplicate_results = self.advanced_analyzer.find_duplicates(progress_callback)
+                
+                # Update items with enhanced similarity scores
+                for item in self.processed_items:
+                    url = item['url']
+                    if url in duplicate_results:
+                        matches = duplicate_results[url]
+                        # Convert to similarity_scores format (percentage)
+                        enhanced_scores = {
+                            match['url']: round(match['similarity'] * 100, 2)
+                            for match in matches
+                        }
+                        # Merge with existing scores, keeping the higher value
+                        existing_scores = item.get('similarity_scores', {})
+                        for match_url, score in enhanced_scores.items():
+                            existing_score = existing_scores.get(match_url, 0)
+                            item['similarity_scores'][match_url] = max(existing_score, score)
+                
+                print("Final similarity analysis complete.")
+            except Exception as e:
+                print(f"Warning: Final similarity analysis failed: {e}")
+                # Continue without enhanced analysis
 
 
 class ItemStoragePipeline:
@@ -213,9 +304,21 @@ class ItemStoragePipeline:
         # Store item
         _collected_items.append(dict(item))
         
-        # Collect internal links
+        # Collect internal links (handle both string and dict formats)
         for link in item.get('internal_links', []):
-            _collected_links.add(link)
+            # Extract URL from dict format or use string directly
+            if isinstance(link, dict):
+                link_url = link.get('url', '')
+                if link_url:
+                    _collected_links.add(link_url)
+            elif isinstance(link, str):
+                _collected_links.add(link)
+            else:
+                # Fallback: convert to string
+                try:
+                    _collected_links.add(str(link))
+                except (TypeError, ValueError):
+                    pass
         
         return item
     

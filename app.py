@@ -19,6 +19,9 @@ from crawl import CrawlerRunner
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
 # Detect if running on Vercel (serverless environment)
 IS_VERCEL = os.environ.get('VERCEL', '0') == '1' or os.environ.get('VERCEL_ENV') is not None
@@ -107,16 +110,25 @@ def login_required(f):
 def login():
     """Handle user login."""
     try:
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
+        # Accept both JSON and form data
+        if request.is_json:
+            data = request.get_json() or {}
+        else:
+            data = request.form.to_dict() or {}
         
-        data = request.get_json() or {}
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
+        
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'error': 'Username and password are required'
+            }), 400
         
         if username == VALID_USERNAME and password == VALID_PASSWORD:
             session['authenticated'] = True
             session['username'] = username
+            session.permanent = True  # Make session persistent
             return jsonify({
                 'success': True,
                 'message': 'Login successful'
@@ -127,6 +139,8 @@ def login():
                 'error': 'Invalid username or password'
             }), 401
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Login error: {str(e)}'}), 500
 
 @app.route('/api/logout', methods=['POST'])
@@ -143,7 +157,7 @@ def check_auth():
             'authenticated': True,
             'username': session.get('username')
         })
-    return jsonify({'authenticated': False}), 401
+    return jsonify({'authenticated': False}), 200  # Return 200, not 401, so frontend can handle it
 
 @app.route('/')
 def index():
