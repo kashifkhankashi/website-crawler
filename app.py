@@ -8,7 +8,7 @@ import csv
 import threading
 import time
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 from flask import Flask, render_template, request, jsonify, send_file, session
@@ -36,6 +36,10 @@ app.config['UPLOAD_FOLDER'] = OUTPUT_BASE_DIR
 
 # Ensure output directory exists
 os.makedirs(OUTPUT_BASE_DIR, exist_ok=True)
+# Store keyword research jobs and progress
+keyword_research_jobs = {}
+keyword_research_lock = threading.Lock()
+
 # Configure SocketIO for Vercel (serverless-friendly)
 socketio = SocketIO(
     app, 
@@ -297,8 +301,14 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
             last_pages = 0
             max_iterations = 3600  # Max 1 hour
             iteration = 0
+            start_time = time.time()
+            last_update_time = start_time
+            
             while active_crawls[job_id]['status'] in ['crawling', 'initializing', 'processing'] and iteration < max_iterations:
                 try:
+                    current_time = time.time()
+                    elapsed_time = current_time - start_time
+                    
                     # Check if progress file exists and read it
                     if os.path.exists(progress_file):
                         with open(progress_file, 'r') as f:
@@ -306,15 +316,65 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
                             pages = progress_data.get('pages_crawled', 0)
                             links = progress_data.get('links_found', 0)
                             
-                            if pages > last_pages or pages > 0:
-                                # Calculate progress: 10-60% for crawling
-                                estimated_total = max(20, pages * 2)  # Estimate based on current pages
-                                crawl_progress = min(60, 10 + (pages / estimated_total) * 50)
+                            if pages > last_pages or pages > 0 or iteration == 0:
+                                # Get discovered URLs from progress file for real-time progress
+                                discovered_urls = progress_data.get('discovered_urls', 0)
+                                
+                                # Calculate progress: 10-60% for crawling phase
+                                # Use discovered URLs if available, otherwise estimate
+                                if discovered_urls > 0 and discovered_urls >= pages:
+                                    # Real progress based on discovered URLs
+                                    crawl_progress = min(60, 10 + (pages / discovered_urls) * 50)
+                                else:
+                                    # Fallback: use a more dynamic estimation
+                                    # Estimate based on pages found, but allow it to grow
+                                    # Use a logarithmic approach that shows progress even when total is unknown
+                                    if pages <= 5:
+                                        crawl_progress = 10 + (pages * 3)  # 10-25% for first 5 pages
+                                    elif pages <= 20:
+                                        crawl_progress = 25 + ((pages - 5) * 1.5)  # 25-47.5% for next 15 pages
+                                    else:
+                                        # For more pages, use a slower growth rate
+                                        crawl_progress = min(60, 47.5 + ((pages - 20) * 0.5))  # 47.5-60% for remaining
                                 
                                 # Get additional stats from progress file
                                 internal_links = progress_data.get('internal_links', 0)
                                 external_links = progress_data.get('external_links', 0)
                                 current_page = progress_data.get('current_page', '')
+                                
+                                # Calculate additional metrics
+                                pages_delta = pages - last_pages
+                                time_delta = current_time - last_update_time if last_update_time > 0 else 1
+                                pages_per_second = pages_delta / time_delta if time_delta > 0 else 0
+                                
+                                # Calculate averages
+                                avg_links_per_page = (internal_links + external_links) / pages if pages > 0 else 0
+                                avg_internal_per_page = internal_links / pages if pages > 0 else 0
+                                
+                                # Estimate time remaining
+                                remaining_pages = max(0, discovered_urls - pages) if discovered_urls > pages else 0
+                                if pages_per_second > 0 and remaining_pages > 0:
+                                    estimated_seconds_remaining = remaining_pages / pages_per_second
+                                    if estimated_seconds_remaining < 60:
+                                        time_remaining_str = f"{int(estimated_seconds_remaining)}s"
+                                    elif estimated_seconds_remaining < 3600:
+                                        time_remaining_str = f"{int(estimated_seconds_remaining / 60)}m {int(estimated_seconds_remaining % 60)}s"
+                                    else:
+                                        hours = int(estimated_seconds_remaining / 3600)
+                                        mins = int((estimated_seconds_remaining % 3600) / 60)
+                                        time_remaining_str = f"{hours}h {mins}m"
+                                else:
+                                    time_remaining_str = "Calculating..."
+                                
+                                # Format elapsed time
+                                if elapsed_time < 60:
+                                    elapsed_time_str = f"{int(elapsed_time)}s"
+                                elif elapsed_time < 3600:
+                                    elapsed_time_str = f"{int(elapsed_time / 60)}m {int(elapsed_time % 60)}s"
+                                else:
+                                    hours = int(elapsed_time / 3600)
+                                    mins = int((elapsed_time % 3600) / 60)
+                                    elapsed_time_str = f"{hours}h {mins}m"
                                 
                                 active_crawls[job_id]['pages_crawled'] = pages
                                 active_crawls[job_id]['links_found'] = links
@@ -324,19 +384,9 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
                                 active_crawls[job_id]['progress'] = int(crawl_progress)
                                 
                                 # Create detailed message
-                                message_parts = [f'Found {pages} pages']
-                                if links > 0:
-                                    message_parts.append(f'{links} links')
-                                if internal_links > 0:
-                                    message_parts.append(f'{internal_links} internal')
-                                if external_links > 0:
-                                    message_parts.append(f'{external_links} external')
-                                if current_page:
-                                    page_display = current_page[:50] + '...' if len(current_page) > 50 else current_page
-                                    message_parts.append(f'Crawling: {page_display}')
-                                
-                                message = 'Crawling... ' + ', '.join(message_parts)
-                                active_crawls[job_id]['message'] = message
+                                message = f'Crawling... Found {pages} pages'
+                                if discovered_urls > pages:
+                                    message += f' of ~{discovered_urls} discovered'
                                 
                                 # Persist to disk
                                 save_job_status(job_id, active_crawls[job_id])
@@ -350,10 +400,17 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
                                     'links_found': links,
                                     'internal_links': internal_links,
                                     'external_links': external_links,
-                                    'current_page': current_page
+                                    'current_page': current_page,
+                                    'discovered_urls': discovered_urls,
+                                    'pages_per_second': round(pages_per_second, 2),
+                                    'avg_links_per_page': round(avg_links_per_page, 1),
+                                    'avg_internal_per_page': round(avg_internal_per_page, 1),
+                                    'elapsed_time': elapsed_time_str,
+                                    'estimated_time_remaining': time_remaining_str
                                 })
                                 
                                 last_pages = pages
+                                last_update_time = current_time
                 except Exception as e:
                     pass
                 iteration += 1
@@ -652,28 +709,259 @@ def analyze_competitors():
         except:
             return jsonify({'error': 'Invalid URL format'}), 400
         
-        # Import advanced competitor analyzer
+        # Try enhanced analyzer first (default)
         try:
-            from advanced_competitor_analyzer import AdvancedCompetitorAnalyzer
+            from enhanced_competitor_analyzer import EnhancedCompetitorAnalyzer
             # Get PageSpeed API key from environment if available
             pagespeed_api_key = os.environ.get('PAGESPEED_API_KEY', None)
-            analyzer = AdvancedCompetitorAnalyzer(pagespeed_api_key=pagespeed_api_key)
-            results = analyzer.analyze_competitors(url1, url2)
+            analyzer = EnhancedCompetitorAnalyzer(pagespeed_api_key=pagespeed_api_key)
+            results = analyzer.analyze_competitors_enhanced(url1, url2, analyze_domain=True)
+            
+            # Merge base analysis into results for backward compatibility
+            if results.get('base_analysis'):
+                base = results['base_analysis']
+                results['your_site'] = base.get('your_site', {})
+                results['competitor'] = base.get('competitor', {})
+                results['comparison'] = base.get('comparison', {})
+                results['winner'] = base.get('winner', {})
+                results['insights'] = base.get('insights', [])
+                results['recommendations'] = base.get('recommendations', [])
+                results['advantage_score'] = base.get('advantage_score', {})
+            
             return jsonify(results)
         except ImportError:
-            # Fallback to basic analyzer
+            # Fallback to advanced analyzer
             try:
-                from competitor_analyzer import CompetitorAnalyzer
-                analyzer = CompetitorAnalyzer()
+                from advanced_competitor_analyzer import AdvancedCompetitorAnalyzer
+                # Get PageSpeed API key from environment if available
+                pagespeed_api_key = os.environ.get('PAGESPEED_API_KEY', None)
+                analyzer = AdvancedCompetitorAnalyzer(pagespeed_api_key=pagespeed_api_key)
                 results = analyzer.analyze_competitors(url1, url2)
                 return jsonify(results)
             except ImportError:
-                return jsonify({'error': 'Competitor analyzer not available'}), 500
+                # Fallback to basic analyzer
+                try:
+                    from competitor_analyzer import CompetitorAnalyzer
+                    analyzer = CompetitorAnalyzer()
+                    results = analyzer.analyze_competitors(url1, url2)
+                    return jsonify(results)
+                except ImportError:
+                    return jsonify({'error': 'Competitor analyzer not available'}), 500
         except Exception as e:
             import traceback
             traceback.print_exc()
             return jsonify({'error': f'Analysis failed: {str(e)}'}), 500
             
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/api/keyword-research', methods=['POST'])
+@login_required
+def keyword_research():
+    """Start keyword research analysis (async with progress tracking)."""
+    try:
+        data = request.get_json()
+        domain = data.get('domain', '').strip()
+        competitors_str = data.get('competitors', '').strip()
+        
+        if not domain:
+            return jsonify({'error': 'Domain is required'}), 400
+        
+        if not competitors_str:
+            return jsonify({'error': 'At least one competitor URL is required'}), 400
+        
+        # Parse competitors (comma-separated or newline-separated)
+        competitors = [c.strip() for c in competitors_str.replace('\n', ',').split(',') if c.strip()]
+        
+        if not competitors:
+            return jsonify({'error': 'At least one competitor URL is required'}), 400
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+        
+        # Initialize job progress
+        with keyword_research_lock:
+            keyword_research_jobs[job_id] = {
+                'status': 'starting',
+                'progress': 0,
+                'stage': 'Initializing analysis...',
+                'current_competitor': None,
+                'competitor_index': 0,
+                'total_competitors': len(competitors),
+                'details': [],
+                'results': None,
+                'error': None,
+                'started_at': datetime.now().isoformat()
+            }
+        
+        # Start analysis in background thread
+        def run_analysis():
+            try:
+                from keyword_research_analyzer import KeywordResearchAnalyzer
+                analyzer = KeywordResearchAnalyzer()
+                
+                # Update progress callback
+                def update_progress(progress, stage, details=None, current_competitor=None, competitor_index=0):
+                    with keyword_research_lock:
+                        if job_id in keyword_research_jobs:
+                            # Only update progress if not None (None means don't change overall progress)
+                            if progress is not None:
+                                keyword_research_jobs[job_id]['progress'] = progress
+                            keyword_research_jobs[job_id]['stage'] = stage
+                            if current_competitor:
+                                keyword_research_jobs[job_id]['current_competitor'] = current_competitor
+                            if competitor_index is not None:
+                                keyword_research_jobs[job_id]['competitor_index'] = competitor_index
+                            if details:
+                                keyword_research_jobs[job_id]['details'].append({
+                                    'time': datetime.now().isoformat(),
+                                    'message': details
+                                })
+                                # Keep only last 50 details to avoid memory issues
+                                if len(keyword_research_jobs[job_id]['details']) > 50:
+                                    keyword_research_jobs[job_id]['details'] = keyword_research_jobs[job_id]['details'][-50:]
+                
+                # Run analysis with progress updates
+                results = analyzer.analyze_keywords_with_progress(domain, competitors, update_progress)
+                
+                # Save results to JSON files
+                try:
+                    results_dir = os.path.join('results', 'keyword_research')
+                    os.makedirs(results_dir, exist_ok=True)
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    keywords_file = os.path.join(results_dir, f'keywords_{timestamp}.json')
+                    with open(keywords_file, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'your_keywords': results['your_keywords'],
+                            'competitor_keywords': results['competitor_keywords']
+                        }, f, indent=2, ensure_ascii=False)
+                    
+                    topic_file = os.path.join(results_dir, f'topic_clusters_{timestamp}.json')
+                    with open(topic_file, 'w', encoding='utf-8') as f:
+                        json.dump({'topic_clusters': results['topic_clusters']}, f, indent=2, ensure_ascii=False)
+                    
+                    gaps_file = os.path.join(results_dir, f'content_gaps_{timestamp}.json')
+                    with open(gaps_file, 'w', encoding='utf-8') as f:
+                        json.dump({'content_gaps': results['content_gaps']}, f, indent=2, ensure_ascii=False)
+                    
+                    results['files_saved'] = {
+                        'keywords': keywords_file,
+                        'topic_clusters': topic_file,
+                        'content_gaps': gaps_file
+                    }
+                except Exception as e:
+                    print(f"Error saving files: {e}")
+                
+                # Mark as completed
+                with keyword_research_lock:
+                    keyword_research_jobs[job_id]['status'] = 'completed'
+                    keyword_research_jobs[job_id]['progress'] = 100
+                    keyword_research_jobs[job_id]['stage'] = 'Analysis complete!'
+                    keyword_research_jobs[job_id]['results'] = results
+                    keyword_research_jobs[job_id]['completed_at'] = datetime.now().isoformat()
+            
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                with keyword_research_lock:
+                    keyword_research_jobs[job_id]['status'] = 'error'
+                    keyword_research_jobs[job_id]['error'] = str(e)
+                    keyword_research_jobs[job_id]['stage'] = f'Error: {str(e)}'
+        
+        # Start background thread
+        thread = threading.Thread(target=run_analysis, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            'job_id': job_id,
+            'status': 'started',
+            'message': 'Analysis started. Use /api/keyword-research-status/<job_id> to check progress.'
+        })
+    
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/api/keyword-research-status/<job_id>', methods=['GET'])
+@login_required
+def keyword_research_status(job_id):
+    """Get keyword research analysis progress."""
+    with keyword_research_lock:
+        if job_id not in keyword_research_jobs:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        job_data = keyword_research_jobs[job_id].copy()
+        
+        # Don't send full results in status endpoint (too large)
+        if job_data.get('results'):
+            job_data['has_results'] = True
+            # Only include summary in status
+            if 'results' in job_data:
+                results = job_data['results']
+                job_data['results_summary'] = {
+                    'statistics': results.get('statistics', {}),
+                    'domain': results.get('domain'),
+                    'competitors': results.get('competitors', [])
+                }
+        
+        return jsonify(job_data)
+
+
+@app.route('/api/keyword-research-results/<job_id>', methods=['GET'])
+@login_required
+def keyword_research_results(job_id):
+    """Get full keyword research results."""
+    with keyword_research_lock:
+        if job_id not in keyword_research_jobs:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        job_data = keyword_research_jobs[job_id]
+        
+        if job_data['status'] != 'completed':
+            return jsonify({'error': 'Analysis not completed yet'}), 400
+        
+        if not job_data.get('results'):
+            return jsonify({'error': 'Results not available'}), 404
+        
+        return jsonify(job_data['results'])
+
+
+@app.route('/api/keyword-search', methods=['POST'])
+@login_required
+def keyword_search():
+    """Search for a specific keyword across competitor sites."""
+    try:
+        data = request.get_json()
+        keyword = data.get('keyword', '').strip()
+        competitors_str = data.get('competitors', '').strip()
+        
+        if not keyword:
+            return jsonify({'error': 'Keyword is required'}), 400
+        
+        if not competitors_str:
+            return jsonify({'error': 'At least one competitor URL is required'}), 400
+        
+        # Parse competitors (comma-separated or newline-separated)
+        competitors = [c.strip() for c in competitors_str.replace('\n', ',').split(',') if c.strip()]
+        
+        if not competitors:
+            return jsonify({'error': 'At least one competitor URL is required'}), 400
+        
+        # Run keyword search
+        from keyword_research_analyzer import KeywordResearchAnalyzer
+        analyzer = KeywordResearchAnalyzer()
+        
+        def progress_callback(progress, message):
+            # Optional: Could use SocketIO for real-time updates
+            pass
+        
+        results = analyzer.search_keyword_across_competitors(keyword, competitors, progress_callback)
+        
+        return jsonify(results)
+        
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
@@ -727,23 +1015,66 @@ def export_competitor_analysis():
 
 @app.route('/api/list-jobs')
 def list_jobs():
-    """List all available crawl jobs (results that exist) - saved crawl history."""
+    """List all available crawl jobs from the last 24 hours only - saved crawl history."""
     jobs = []
     seen_job_ids = set()
+    
+    # Calculate 24 hours ago
+    now = datetime.now()
+    twenty_four_hours_ago = now - timedelta(hours=24)
+    
+    def parse_datetime(date_str):
+        """Parse datetime string in various formats."""
+        if not date_str:
+            return None
+        try:
+            # Try ISO format first
+            if 'T' in date_str:
+                dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                # Convert to naive datetime for comparison
+                if dt.tzinfo:
+                    dt = dt.replace(tzinfo=None)
+                return dt
+            # Try common formats
+            formats = [
+                '%Y-%m-%d %H:%M:%S',
+                '%Y-%m-%d %H:%M:%S.%f',
+                '%Y-%m-%d',
+            ]
+            for fmt in formats:
+                try:
+                    return datetime.strptime(date_str, fmt)
+                except ValueError:
+                    continue
+        except Exception:
+            pass
+        return None
+    
+    def is_within_24_hours(job_date_str):
+        """Check if job date is within the last 24 hours."""
+        if not job_date_str:
+            return False
+        job_date = parse_datetime(job_date_str)
+        if job_date:
+            return job_date >= twenty_four_hours_ago
+        return False
     
     # Check active crawls
     for job_id, crawl_info in active_crawls.items():
         seen_job_ids.add(job_id)
-        jobs.append({
-            'job_id': job_id,
-            'url': crawl_info.get('url', ''),
-            'status': crawl_info.get('status', 'unknown'),
-            'started_at': crawl_info.get('started_at', ''),
-            'completed_at': crawl_info.get('completed_at', ''),
-            'pages_crawled': crawl_info.get('pages_crawled', 0),
-            'links_found': crawl_info.get('links_found', 0),
-            'site_seo_score': None  # Will be loaded from report if available
-        })
+        started_at = crawl_info.get('started_at', '')
+        # Include active crawls (they're recent by definition) or if within 24 hours
+        if crawl_info.get('status') in ['crawling', 'starting'] or is_within_24_hours(started_at):
+            jobs.append({
+                'job_id': job_id,
+                'url': crawl_info.get('url', ''),
+                'status': crawl_info.get('status', 'unknown'),
+                'started_at': started_at,
+                'completed_at': crawl_info.get('completed_at', ''),
+                'pages_crawled': crawl_info.get('pages_crawled', 0),
+                'links_found': crawl_info.get('links_found', 0),
+                'site_seo_score': None  # Will be loaded from report if available
+            })
     
     # Also check for completed jobs in output directory (saved crawl history)
     output_dir = app.config['UPLOAD_FOLDER']
@@ -761,6 +1092,12 @@ def list_jobs():
                         with open(json_path, 'r', encoding='utf-8') as f:
                             report_data = json.load(f)
                         
+                        crawl_date = report_data.get('crawl_date', '')
+                        
+                        # Only include jobs from the last 24 hours
+                        if not is_within_24_hours(crawl_date):
+                            continue
+                        
                         # Get first page URL as site URL
                         site_url = ''
                         if report_data.get('pages'):
@@ -776,8 +1113,8 @@ def list_jobs():
                             'job_id': item,
                             'url': site_url,
                             'status': 'completed',
-                            'started_at': report_data.get('crawl_date', ''),
-                            'completed_at': report_data.get('crawl_date', ''),
+                            'started_at': crawl_date,
+                            'completed_at': crawl_date,
                             'pages_crawled': report_data.get('total_pages', 0),
                             'links_found': len(report_data.get('pages', [{}])[0].get('internal_links', [])) if report_data.get('pages') else 0,
                             'site_seo_score': report_data.get('site_seo_score', {}).get('score') if report_data.get('site_seo_score') else None
@@ -794,7 +1131,7 @@ def list_jobs():
                         pass
     
     # Sort by started_at (most recent first)
-    jobs.sort(key=lambda x: x.get('started_at', ''), reverse=True)
+    jobs.sort(key=lambda x: parse_datetime(x.get('started_at', '')) or datetime.min, reverse=True)
     
     return jsonify({'jobs': jobs})
 

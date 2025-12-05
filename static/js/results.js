@@ -83,23 +83,101 @@ async function loadResults() {
 
 // Display all sections
 function displayAllSections(data) {
-    displayOverview(data);
-    displayBrokenLinks(data);
-    displayDuplicates(data);
-    displaySimilarity(data);
-    displayExternalLinks(data);
-    displayStatistics(data);
-    displayImageAnalyzer(data);
-    displayKeywords(data);
-    setupKeywordSearch(data);
-    displayMetaSeo(data);
-    displayPerformanceAnalysis(data);
-    displayOrphanPages(data);
-    displayPagePower(data);
-    displayAdvancedSEO(data);
-    displayDOMAnalysis(data);
-    // Update SEO score in summary card from Advanced SEO Audit
-    updateSeoScoreSummary(data);
+    try {
+        displayOverview(data);
+    } catch (e) {
+        console.error('Error displaying overview:', e);
+    }
+    
+    try {
+        displayBrokenLinks(data);
+    } catch (e) {
+        console.error('Error displaying broken links:', e);
+    }
+    
+    try {
+        displayDuplicates(data);
+    } catch (e) {
+        console.error('Error displaying duplicates:', e);
+    }
+    
+    try {
+        displaySimilarity(data);
+    } catch (e) {
+        console.error('Error displaying similarity:', e);
+    }
+    
+    try {
+        displayExternalLinks(data);
+    } catch (e) {
+        console.error('Error displaying external links:', e);
+    }
+    
+    try {
+        displayStatistics(data);
+    } catch (e) {
+        console.error('Error displaying statistics:', e);
+    }
+    
+    try {
+        displayImageAnalyzer(data);
+    } catch (e) {
+        console.error('Error displaying image analyzer:', e);
+    }
+    
+    try {
+        displayKeywords(data);
+        setupKeywordSearch(data);
+    } catch (e) {
+        console.error('Error displaying keywords:', e);
+    }
+    
+    try {
+        displayMetaSeo(data);
+    } catch (e) {
+        console.error('Error displaying meta SEO:', e);
+    }
+    
+    try {
+        displayPerformanceAnalysis(data);
+    } catch (e) {
+        console.error('Error displaying performance analysis:', e);
+        // Show error in performance container
+        const perfContainer = document.getElementById('heavyImagesContainer');
+        if (perfContainer) {
+            perfContainer.innerHTML = '<div class="error">Error loading performance analysis. Please check console for details.</div>';
+        }
+    }
+    
+    try {
+        displayOrphanPages(data);
+    } catch (e) {
+        console.error('Error displaying orphan pages:', e);
+    }
+    
+    try {
+        displayPagePower(data);
+    } catch (e) {
+        console.error('Error displaying page power:', e);
+    }
+    
+    try {
+        displayAdvancedSEO(data);
+    } catch (e) {
+        console.error('Error displaying advanced SEO:', e);
+    }
+    
+    try {
+        displayDOMAnalysis(data);
+    } catch (e) {
+        console.error('Error displaying DOM analysis:', e);
+    }
+    
+    try {
+        updateSeoScoreSummary(data);
+    } catch (e) {
+        console.error('Error updating SEO score:', e);
+    }
     
     // Debug: Log data to console
     console.log('Loaded data:', {
@@ -1072,34 +1150,83 @@ function displayExternalLinks(data) {
     const container = document.getElementById('externalLinksContainer');
     const allExternalLinks = [];
     
+    // Extract external links with location data
     if (data.pages) {
         data.pages.forEach(page => {
             if (page.external_links && page.external_links.length > 0) {
-                page.external_links.forEach(linkUrl => {
+                page.external_links.forEach(linkData => {
+                    // Handle both string URLs and dict objects with location data
+                    let linkUrl, anchorText, locationInfo, cssSelector, context;
+                    
+                    if (typeof linkData === 'string') {
+                        linkUrl = linkData;
+                        anchorText = '';
+                        locationInfo = {};
+                        cssSelector = '';
+                        context = {};
+                    } else if (typeof linkData === 'object') {
+                        linkUrl = linkData.url || linkData.href || '';
+                        anchorText = linkData.anchor_text || '';
+                        locationInfo = {
+                            parent_tag: linkData.parent_tag || '',
+                            parent_class: linkData.parent_class || '',
+                            parent_id: linkData.parent_id || '',
+                            line_number: linkData.line_number || 0
+                        };
+                        cssSelector = linkData.css_selector || '';
+                        context = linkData.context || {};
+                    } else {
+                        linkUrl = String(linkData);
+                        anchorText = '';
+                        locationInfo = {};
+                        cssSelector = '';
+                        context = {};
+                    }
+                    
+                    if (!linkUrl) return;
+                    
+                    // Extract domain
+                    try {
+                        const urlObj = new URL(linkUrl);
+                        var domain = urlObj.hostname;
+                    } catch (e) {
+                        var domain = linkUrl;
+                    }
+                    
                     allExternalLinks.push({
                         url: linkUrl,
+                        domain: domain,
                         source_page: page.url,
-                        source_title: page.title,
-                        source_status: page.status_code
+                        source_title: page.title || page.url,
+                        source_status: page.status_code,
+                        anchor_text: anchorText,
+                        location_info: locationInfo,
+                        css_selector: cssSelector,
+                        context: context
                     });
                 });
             }
         });
     }
     
-    // Remove duplicates (same URL from different pages)
+    // Group by unique URL
     const uniqueLinks = {};
     allExternalLinks.forEach(link => {
         if (!uniqueLinks[link.url]) {
             uniqueLinks[link.url] = {
                 url: link.url,
+                domain: link.domain,
                 sources: []
             };
         }
         uniqueLinks[link.url].sources.push({
             page_url: link.source_page,
             page_title: link.source_title,
-            page_status: link.source_status
+            page_status: link.source_status,
+            anchor_text: link.anchor_text,
+            location_info: link.location_info,
+            css_selector: link.css_selector,
+            context: link.context
         });
     });
     
@@ -1115,7 +1242,7 @@ function displayExternalLinks(data) {
     // Populate page filter
     const pageFilter = document.getElementById('externalPageFilter');
     if (pageFilter && data.pages) {
-        const currentOptions = pageFilter.innerHTML;
+        pageFilter.innerHTML = '<option value="all">All Pages</option>';
         data.pages.forEach(page => {
             const option = document.createElement('option');
             option.value = page.url;
@@ -1129,34 +1256,135 @@ function displayExternalLinks(data) {
         return;
     }
     
-    container.innerHTML = '';
-    Object.values(uniqueLinks).forEach((linkData, index) => {
-        const linkItem = document.createElement('div');
-        linkItem.className = 'external-link-item';
-        linkItem.innerHTML = `
-            <div class="external-link-header">
-                <div class="external-link-url">
-                    <i class="fas fa-external-link-alt"></i>
-                    <a href="${linkData.url}" target="_blank" rel="noopener noreferrer">${linkData.url}</a>
-                </div>
-                <div class="external-link-count">
-                    <span class="badge badge-info">${linkData.sources.length} page${linkData.sources.length > 1 ? 's' : ''}</span>
-                </div>
-            </div>
-            <div class="external-link-sources">
-                <strong>Found on:</strong>
-                <ul class="source-list">
-                    ${linkData.sources.map(source => `
-                        <li>
-                            <a href="${source.page_url}" target="_blank">${source.page_title || source.page_url}</a>
-                            <span class="source-status status-badge status-${source.page_status === 200 ? '200' : 'error'}">${source.page_status || 'Unknown'}</span>
-                        </li>
-                    `).join('')}
-                </ul>
-            </div>
-        `;
-        container.appendChild(linkItem);
+    // Create compact table format
+    let html = `
+        <div class="table-container">
+            <table class="data-table external-links-table">
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">External URL / Domain</th>
+                        <th style="width: 25%;">Source Page</th>
+                        <th style="width: 20%;">Anchor Text</th>
+                        <th style="width: 15%;">Location</th>
+                        <th style="width: 10%;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    // Sort links by domain, then URL
+    const sortedLinks = Object.values(uniqueLinks).sort((a, b) => {
+        const domainCompare = a.domain.localeCompare(b.domain);
+        if (domainCompare !== 0) return domainCompare;
+        return a.url.localeCompare(b.url);
     });
+    
+    sortedLinks.forEach((linkData, index) => {
+        linkData.sources.forEach((source, sourceIndex) => {
+            const isFirstSource = sourceIndex === 0;
+            const rowspan = sourceIndex === 0 ? linkData.sources.length : 0;
+            
+            // Build location string
+            const locationParts = [];
+            if (source.location_info.parent_tag) {
+                locationParts.push(`<${source.location_info.parent_tag}>`);
+            }
+            if (source.location_info.parent_class) {
+                const classes = source.location_info.parent_class.split(' ')[0];
+                if (classes) locationParts.push(`.${classes}`);
+            }
+            if (source.location_info.parent_id) {
+                locationParts.push(`#${source.location_info.parent_id}`);
+            }
+            const locationStr = locationParts.length > 0 ? locationParts.join(' ') : 'Unknown';
+            
+            // Get domain display
+            const domainDisplay = linkData.domain.length > 40 
+                ? linkData.domain.substring(0, 37) + '...' 
+                : linkData.domain;
+            
+            // Get URL display (shortened)
+            const urlDisplay = linkData.url.length > 50
+                ? linkData.url.substring(0, 47) + '...'
+                : linkData.url;
+            
+            html += `
+                <tr class="external-link-row" data-link-index="${index}" data-source-index="${sourceIndex}">
+            `;
+            
+            // External URL / Domain (only show on first row)
+            if (isFirstSource) {
+                html += `
+                    <td rowspan="${rowspan}" class="external-url-cell">
+                        <div class="external-url-info">
+                            <div class="external-url-link">
+                                <i class="fas fa-external-link-alt"></i>
+                                <a href="${linkData.url}" target="_blank" rel="noopener noreferrer" title="${linkData.url}">
+                                    ${urlDisplay}
+                                </a>
+                            </div>
+                            <div class="external-domain">
+                                <i class="fas fa-globe"></i> ${domainDisplay}
+                            </div>
+                            ${linkData.sources.length > 1 ? `<div class="link-count-badge">${linkData.sources.length} pages</div>` : ''}
+                        </div>
+                    </td>
+                `;
+            }
+            
+            // Source Page
+            html += `
+                <td class="source-page-cell">
+                    <div class="source-page-info">
+                        <a href="${source.page_url}" target="_blank" title="${source.page_url}">
+                            ${source.page_title || source.page_url}
+                        </a>
+                        <span class="status-badge status-${source.page_status === 200 ? '200' : 'error'}">${source.page_status || 'Unknown'}</span>
+                    </div>
+                </td>
+            `;
+            
+            // Anchor Text
+            html += `
+                <td class="anchor-text-cell">
+                    ${source.anchor_text ? `<span class="anchor-text-display" title="${source.anchor_text}">"${source.anchor_text.length > 30 ? source.anchor_text.substring(0, 27) + '...' : source.anchor_text}"</span>` : '<span class="text-muted">(no text)</span>'}
+                </td>
+            `;
+            
+            // Location
+            html += `
+                <td class="location-cell">
+                    <span class="location-display" title="${locationStr}">${locationStr.length > 25 ? locationStr.substring(0, 22) + '...' : locationStr}</span>
+                    ${source.css_selector ? `<div class="css-selector-hint" title="CSS: ${source.css_selector}"><i class="fas fa-code"></i></div>` : ''}
+                </td>
+            `;
+            
+            // Actions
+            html += `
+                <td class="actions-cell">
+                    <button class="btn btn-sm btn-primary" onclick="showExternalLinkDetails(${index}, ${sourceIndex})" title="View Details">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    ${source.css_selector ? `<button class="btn btn-sm btn-secondary" onclick="viewExternalLinkOnPage('${source.page_url}', '${source.css_selector.replace(/'/g, "\\'")}')" title="View on Page">
+                        <i class="fas fa-eye"></i>
+                    </button>` : ''}
+                </td>
+            `;
+            
+            html += `</tr>`;
+        });
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Store external links data globally for modal access
+    window.externalLinksData = sortedLinks;
     
     // Setup filter
     setupExternalLinksFilter();
@@ -1171,22 +1399,34 @@ function setupExternalLinksFilter() {
         const searchTerm = searchInput.value.toLowerCase();
         const selectedPage = pageFilter.value;
         
-        const linkItems = document.querySelectorAll('.external-link-item');
-        linkItems.forEach(item => {
-            const linkUrl = item.querySelector('.external-link-url a').textContent.toLowerCase();
-            const sources = item.querySelectorAll('.source-list a');
+        const linkRows = document.querySelectorAll('.external-link-row');
+        linkRows.forEach(row => {
+            const linkIndex = parseInt(row.dataset.linkIndex);
+            const linkData = window.externalLinksData && window.externalLinksData[linkIndex];
+            
+            if (!linkData) {
+                row.style.display = 'none';
+                return;
+            }
+            
             let show = true;
             
             // Search filter
-            if (searchTerm && !linkUrl.includes(searchTerm)) {
-                // Check if any source page matches
+            if (searchTerm) {
+                const urlMatch = linkData.url.toLowerCase().includes(searchTerm);
+                const domainMatch = linkData.domain.toLowerCase().includes(searchTerm);
+                
+                // Check source pages
                 let sourceMatch = false;
-                sources.forEach(source => {
-                    if (source.textContent.toLowerCase().includes(searchTerm)) {
+                linkData.sources.forEach(source => {
+                    if (source.page_title.toLowerCase().includes(searchTerm) ||
+                        source.page_url.toLowerCase().includes(searchTerm) ||
+                        (source.anchor_text && source.anchor_text.toLowerCase().includes(searchTerm))) {
                         sourceMatch = true;
                     }
                 });
-                if (!sourceMatch) {
+                
+                if (!urlMatch && !domainMatch && !sourceMatch) {
                     show = false;
                 }
             }
@@ -1194,8 +1434,8 @@ function setupExternalLinksFilter() {
             // Page filter
             if (selectedPage !== 'all') {
                 let pageMatch = false;
-                sources.forEach(source => {
-                    if (source.href === selectedPage) {
+                linkData.sources.forEach(source => {
+                    if (source.page_url === selectedPage) {
                         pageMatch = true;
                     }
                 });
@@ -1204,7 +1444,7 @@ function setupExternalLinksFilter() {
                 }
             }
             
-            item.style.display = show ? '' : 'none';
+            row.style.display = show ? '' : 'none';
         });
     };
     
@@ -1213,6 +1453,135 @@ function setupExternalLinksFilter() {
     }
     if (pageFilter) {
         pageFilter.addEventListener('change', filterLinks);
+    }
+}
+
+// Show external link details modal
+function showExternalLinkDetails(linkIndex, sourceIndex) {
+    if (!window.externalLinksData || !window.externalLinksData[linkIndex]) return;
+    
+    const linkData = window.externalLinksData[linkIndex];
+    const source = linkData.sources[sourceIndex];
+    
+    if (!source) return;
+    
+    const locationParts = [];
+    if (source.location_info.parent_tag) locationParts.push(`<${source.location_info.parent_tag}>`);
+    if (source.location_info.parent_class) {
+        const classes = source.location_info.parent_class.split(' ')[0];
+        if (classes) locationParts.push(`.${classes}`);
+    }
+    if (source.location_info.parent_id) locationParts.push(`#${source.location_info.parent_id}`);
+    const locationStr = locationParts.join(' ') || 'Unknown location';
+    
+    const contextBefore = (source.context?.before || '').substring(0, 100);
+    const contextAfter = (source.context?.after || '').substring(0, 100);
+    
+    let modalHtml = `
+        <div class="modal" id="externalLinkModal" style="display: block;">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    <h2><i class="fas fa-external-link-alt"></i> External Link Details</h2>
+                    <span class="close" onclick="closeExternalLinkModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-link"></i> External URL</h3>
+                        <p><a href="${linkData.url}" target="_blank" rel="noopener noreferrer">${linkData.url}</a></p>
+                        <p><strong>Domain:</strong> ${linkData.domain}</p>
+                    </div>
+                    
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-file-alt"></i> Source Page</h3>
+                        <p><a href="${source.page_url}" target="_blank">${source.page_title || source.page_url}</a></p>
+                        <p><strong>Status:</strong> <span class="status-badge status-${source.page_status === 200 ? '200' : 'error'}">${source.page_status || 'Unknown'}</span></p>
+                    </div>
+                    
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-quote-left"></i> Anchor Text</h3>
+                        <p>${source.anchor_text || '(no anchor text)'}</p>
+                    </div>
+                    
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-map-marker-alt"></i> Location Information</h3>
+                        <p><strong>HTML Element:</strong> ${locationStr}</p>
+                        ${source.location_info.line_number > 0 ? `<p><strong>Line Number:</strong> ${source.location_info.line_number}</p>` : ''}
+                        ${source.css_selector ? `<p><strong>CSS Selector:</strong> <code>${source.css_selector}</code></p>` : ''}
+                    </div>
+                    
+                    ${(contextBefore || contextAfter) ? `
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-quote-left"></i> Context</h3>
+                        <div class="link-context">
+                            ${contextBefore ? `<span class="context-before">...${contextBefore}</span>` : ''}
+                            <span class="link-highlight">${source.anchor_text || 'link'}</span>
+                            ${contextAfter ? `<span class="context-after">${contextAfter}...</span>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="modal-actions" style="margin-top: 20px; display: flex; gap: 10px;">
+                        ${source.css_selector ? `<button class="btn btn-primary" onclick="viewExternalLinkOnPage('${source.page_url}', '${source.css_selector.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-eye"></i> View on Page
+                        </button>` : ''}
+                        <button class="btn btn-secondary" onclick="closeExternalLinkModal()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('externalLinkModal');
+    if (existingModal) existingModal.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeExternalLinkModal() {
+    const modal = document.getElementById('externalLinkModal');
+    if (modal) modal.remove();
+}
+
+// View external link on source page
+function viewExternalLinkOnPage(pageUrl, cssSelector) {
+    const newWindow = window.open(pageUrl, '_blank');
+    
+    if (newWindow) {
+        newWindow.onload = function() {
+            try {
+                const script = `
+                    (function() {
+                        try {
+                            const selector = ${JSON.stringify(cssSelector)};
+                            const element = document.querySelector(selector);
+                            if (element) {
+                                element.style.outline = '3px solid #4a90e2';
+                                element.style.outlineOffset = '2px';
+                                element.style.backgroundColor = 'rgba(74, 144, 226, 0.1)';
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                
+                                setTimeout(() => {
+                                    element.style.outline = '';
+                                    element.style.outlineOffset = '';
+                                    element.style.backgroundColor = '';
+                                }, 5000);
+                            } else {
+                                alert('Link element not found on page.');
+                            }
+                        } catch(e) {
+                            console.error('Error highlighting element:', e);
+                        }
+                    })();
+                `;
+                newWindow.eval(script);
+            } catch (e) {
+                console.error('Error opening page:', e);
+                alert('Could not highlight link on page. Please check the page manually.');
+            }
+        };
     }
 }
 
@@ -2035,19 +2404,690 @@ function generateTextReport(data) {
     return report;
 }
 
+// Calculate performance score based on issues
+function calculatePerformanceScore(heavyImages, slowJsCss, slowSections, slowComponents, renderBlocking) {
+    let score = 100;
+    const maxDeduction = 50; // Maximum deduction from score
+    
+    // Heavy images deduction (max 15 points)
+    if (heavyImages > 0) {
+        const imageDeduction = Math.min(15, heavyImages * 2);
+        score -= imageDeduction;
+    }
+    
+    // Slow JS/CSS deduction (max 15 points)
+    if (slowJsCss > 0) {
+        const fileDeduction = Math.min(15, slowJsCss * 3);
+        score -= fileDeduction;
+    }
+    
+    // Slow sections deduction (max 10 points)
+    if (slowSections > 0) {
+        const sectionDeduction = Math.min(10, slowSections * 2);
+        score -= sectionDeduction;
+    }
+    
+    // Slow components deduction (max 10 points)
+    if (slowComponents > 0) {
+        const componentDeduction = Math.min(10, slowComponents * 2);
+        score -= componentDeduction;
+    }
+    
+    // Render-blocking deduction (max 20 points)
+    if (renderBlocking > 0) {
+        const blockingDeduction = Math.min(20, renderBlocking * 5);
+        score -= blockingDeduction;
+    }
+    
+    score = Math.max(0, Math.min(100, score));
+    return Math.round(score);
+}
+
+// Get performance grade
+function getPerformanceGrade(score) {
+    if (score >= 90) return { grade: 'A', color: '#10b981', text: 'Excellent' };
+    if (score >= 75) return { grade: 'B', color: '#3b82f6', text: 'Good' };
+    if (score >= 60) return { grade: 'C', color: '#f59e0b', text: 'Needs Improvement' };
+    if (score >= 40) return { grade: 'D', color: '#ef4444', text: 'Poor' };
+    return { grade: 'F', color: '#dc2626', text: 'Critical' };
+}
+
+// Get performance status badge
+function getPerformanceStatus(count, threshold, type) {
+    if (count === 0) return { status: 'Good', class: 'status-good', icon: 'fa-check-circle' };
+    if (count <= threshold) return { status: 'Warning', class: 'status-warning', icon: 'fa-exclamation-triangle' };
+    return { status: 'Critical', class: 'status-critical', icon: 'fa-times-circle' };
+}
+
+// Generate fix guide HTML
+function generateFixGuide(issueType, issue) {
+    const fixGuides = {
+        heavyImage: {
+            title: 'How to Optimize Heavy Images',
+            description: 'Large images slow down page load times and increase bandwidth usage. Follow these steps to optimize:',
+            steps: [
+                {
+                    title: '1. Compress the Image',
+                    description: 'Use image compression tools to reduce file size without significant quality loss.',
+                    code: `<!-- Use tools like TinyPNG, ImageOptim, or Squoosh -->
+<!-- Before: 2MB image -->
+<!-- After: 150KB image (85% reduction) -->`,
+                    tools: ['TinyPNG', 'ImageOptim', 'Squoosh', 'Compressor.io']
+                },
+                {
+                    title: '2. Use Modern Image Formats',
+                    description: 'Convert to WebP or AVIF format for better compression (up to 30% smaller than JPEG).',
+                    code: `<!-- Convert to WebP format -->
+<picture>
+  <source srcset="image.webp" type="image/webp">
+  <source srcset="image.jpg" type="image/jpeg">
+  <img src="image.jpg" alt="Description">
+</picture>`,
+                    tools: ['CloudConvert', 'Squoosh', 'cwebp CLI']
+                },
+                {
+                    title: '3. Add Lazy Loading',
+                    description: 'Load images only when they\'re about to enter the viewport.',
+                    code: `<!-- Add loading="lazy" attribute -->
+<img src="${issue.url || 'image.jpg'}" 
+     alt="Description" 
+     loading="lazy"
+     width="${issue.width || 800}" 
+     height="${issue.height || 600}">`,
+                    note: 'Native lazy loading is supported in all modern browsers'
+                },
+                {
+                    title: '4. Specify Image Dimensions',
+                    description: 'Always include width and height attributes to prevent layout shift.',
+                    code: `<!-- Always specify dimensions -->
+<img src="image.jpg" 
+     alt="Description"
+     width="800"
+     height="600">`,
+                    note: 'Prevents Cumulative Layout Shift (CLS)'
+                },
+                {
+                    title: '5. Use Responsive Images',
+                    description: 'Serve different image sizes for different screen sizes.',
+                    code: `<!-- Responsive images with srcset -->
+<img srcset="
+  image-small.jpg 400w,
+  image-medium.jpg 800w,
+  image-large.jpg 1200w
+" 
+     sizes="(max-width: 600px) 400px, (max-width: 1200px) 800px, 1200px"
+     src="image-medium.jpg"
+     alt="Description">`
+                }
+            ],
+            priority: issue.size_kb > 500 ? 'High' : 'Medium',
+            estimatedSavings: `Reduce ${issue.size_kb ? (issue.size_kb * 0.7).toFixed(0) : '70'}% file size`
+        },
+        slowJsCss: {
+            title: 'How to Optimize Slow JS/CSS Files',
+            description: 'Large JavaScript and CSS files block page rendering. Optimize them with these techniques:',
+            steps: [
+                {
+                    title: '1. Minify and Compress',
+                    description: 'Minify JavaScript and CSS to remove whitespace and comments, then compress with gzip/brotli.',
+                    code: `// Before minification (development)
+function calculateTotal(items) {
+    let total = 0;
+    for (let i = 0; i < items.length; i++) {
+        total += items[i].price;
+    }
+    return total;
+}
+
+// After minification (production)
+function calculateTotal(e){let t=0;for(let i=0;i<e.length;i++)t+=e[i].price;return t}`,
+                    tools: ['UglifyJS', 'Terser', 'cssnano', 'Webpack', 'Parcel']
+                },
+                {
+                    title: '2. Split and Code Split',
+                    description: 'Break large files into smaller chunks and load only what\'s needed.',
+                    code: `// Use dynamic imports for code splitting
+// Instead of: import { heavyFunction } from './heavy-module';
+// Use:
+const heavyFunction = await import('./heavy-module')
+  .then(module => module.heavyFunction);`,
+                    note: 'Reduces initial bundle size significantly'
+                },
+                {
+                    title: '3. Add Async/Defer Attributes',
+                    description: 'Prevent JavaScript from blocking HTML parsing.',
+                    code: `<!-- For scripts that don't need to run immediately -->
+<script src="script.js" defer></script>
+
+<!-- For scripts that are independent -->
+<script src="analytics.js" async></script>`,
+                    note: 'Defer: executes after HTML parsing. Async: downloads in parallel'
+                },
+                {
+                    title: '4. Remove Unused CSS',
+                    description: 'Remove CSS that isn\'t actually used on your pages.',
+                    code: `/* Use tools to detect and remove unused CSS */
+/* Before: 200KB of CSS */
+/* After: 50KB of CSS (75% reduction) */`,
+                    tools: ['PurgeCSS', 'UnCSS', 'Chrome DevTools Coverage']
+                },
+                {
+                    title: '5. Use CDN for Libraries',
+                    description: 'Load common libraries from CDN with caching benefits.',
+                    code: `<!-- Load from CDN instead of hosting -->
+<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+<!-- Browser may already have this cached -->`
+                }
+            ],
+            priority: 'High',
+            estimatedSavings: `Reduce ${issue.size_kb ? (issue.size_kb * 0.6).toFixed(0) : '60'}% file size`
+        },
+        renderBlocking: {
+            title: 'How to Fix Render-Blocking Resources',
+            description: 'Render-blocking resources delay the first paint of your page. Fix them immediately:',
+            steps: [
+                {
+                    title: '1. Add Async or Defer to Scripts',
+                    description: 'Move scripts to the end of body or add async/defer attributes.',
+                    code: `<!-- ❌ BAD: Blocks rendering -->
+<script src="script.js"></script>
+
+<!-- ✅ GOOD: Non-blocking -->
+<script src="script.js" defer></script>
+<!-- OR -->
+<script src="analytics.js" async></script>`,
+                    note: 'Defer = after HTML parsing, Async = parallel download'
+                },
+                {
+                    title: '2. Inline Critical CSS',
+                    description: 'Inline above-the-fold CSS directly in the <head> tag.',
+                    code: `<!-- Inline critical CSS in <head> -->
+<style>
+  /* Critical above-the-fold styles here */
+  body { font-family: Arial; }
+  header { background: #333; }
+</style>
+
+<!-- Load non-critical CSS asynchronously -->
+<link rel="preload" href="styles.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="styles.css"></noscript>`
+                },
+                {
+                    title: '3. Use Preload for Important Resources',
+                    description: 'Hint to browser about resources needed early.',
+                    code: `<!-- Preload important resources -->
+<link rel="preload" href="font.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="hero-image.jpg" as="image">`,
+                    note: 'Tells browser to fetch resource early'
+                },
+                {
+                    title: '4. Defer Non-Critical CSS',
+                    description: 'Load non-critical CSS asynchronously.',
+                    code: `<!-- Load CSS asynchronously -->
+<link rel="preload" href="non-critical.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="non-critical.css"></noscript>
+
+<!-- Or use loadCSS library -->
+<script>
+  loadCSS("non-critical.css");
+</script>`
+                },
+                {
+                    title: '5. Minimize and Combine Files',
+                    description: 'Reduce the number of render-blocking resources.',
+                    code: `<!-- ❌ BAD: Multiple files -->
+<link rel="stylesheet" href="reset.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="components.css">
+
+<!-- ✅ GOOD: Combined and minified -->
+<link rel="stylesheet" href="main.min.css">`
+                }
+            ],
+            priority: 'Critical',
+            estimatedSavings: 'Improve First Contentful Paint by 1-2 seconds'
+        },
+        slowHtmlSection: {
+            title: 'How to Optimize Slow HTML Sections',
+            description: 'Complex or deeply nested HTML structures slow down browser rendering. Simplify your HTML structure with these techniques:',
+            steps: [
+                {
+                    title: '1. Reduce Nesting Depth',
+                    description: 'Flatten your HTML structure to reduce nesting levels. Keep nesting depth under 10 levels.',
+                    code: `<!-- ❌ BAD: Too much nesting -->
+<div>
+  <div>
+    <div>
+      <div>
+        <div>
+          <p>Content</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ GOOD: Flatter structure -->
+<div>
+  <p>Content</p>
+</div>`,
+                    note: 'Use semantic HTML5 elements (section, article, main) instead of nested divs'
+                },
+                {
+                    title: '2. Split Large Sections',
+                    description: 'Break large sections with many children into smaller, manageable components.',
+                    code: `<!-- ❌ BAD: One huge section with 100+ children -->
+<section>
+  <!-- 100+ elements here -->
+</section>
+
+<!-- ✅ GOOD: Split into smaller sections -->
+<section class="hero"></section>
+<section class="features"></section>
+<section class="content"></section>`,
+                    note: 'Components with 50+ direct children should be split'
+                },
+                {
+                    title: '3. Use CSS Grid/Flexbox Instead of Nested Divs',
+                    description: 'Modern CSS layout methods reduce the need for wrapper divs.',
+                    code: `<!-- ❌ BAD: Nested divs for layout -->
+<div class="container">
+  <div class="row">
+    <div class="col">
+      <div class="content">Content</div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ GOOD: CSS Grid -->
+<div class="grid-container">
+  <div class="content">Content</div>
+</div>
+
+/* CSS */
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}`
+                },
+                {
+                    title: '4. Lazy Load Images in Sections',
+                    description: 'Don\'t load all images in a large section at once.',
+                    code: `<!-- Add loading="lazy" to images -->
+<img src="image.jpg" 
+     alt="Description"
+     loading="lazy"
+     width="800"
+     height="600">`,
+                    note: 'Native lazy loading loads images only when needed'
+                },
+                {
+                    title: '5. Minimize DOM Elements',
+                    description: 'Remove unnecessary wrapper elements and use CSS for styling.',
+                    code: `<!-- ❌ BAD: Unnecessary wrappers -->
+<div class="wrapper">
+  <div class="container">
+    <div class="content">
+      <p>Text</p>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ GOOD: Minimal structure -->
+<div class="content">
+  <p>Text</p>
+</div>
+
+/* Use CSS for layout, not extra divs */`
+                }
+            ],
+            priority: 'High',
+            estimatedSavings: 'Improve rendering time by 10-30%'
+        },
+        slowComponent: {
+            title: 'How to Optimize Slow Components',
+            description: 'Large tables, complex forms, and image galleries can slow down your page. Optimize them with these strategies:',
+            steps: [
+                {
+                    title: '1. Implement Pagination for Large Tables',
+                    description: 'Split large tables into multiple pages instead of loading all rows at once.',
+                    code: `<!-- Show 25 rows per page -->
+<table>
+  <thead>
+    <tr>
+      <th>Column 1</th>
+      <th>Column 2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Only render visible rows (25 per page) -->
+    <tr><td>Row 1</td><td>Data</td></tr>
+    <tr><td>Row 2</td><td>Data</td></tr>
+    <!-- ... 23 more rows ... -->
+  </tbody>
+</table>
+
+<!-- Pagination controls -->
+<div class="pagination">
+  <button>Previous</button>
+  <span>Page 1 of 10</span>
+  <button>Next</button>
+</div>`,
+                    tools: ['DataTables', 'AG Grid', 'React Table']
+                },
+                {
+                    title: '2. Use Virtual Scrolling',
+                    description: 'Only render visible items in long lists (100+ items).',
+                    code: `// JavaScript example - only render visible items
+function renderVisibleItems(items, containerHeight, itemHeight) {
+  const visibleCount = Math.ceil(containerHeight / itemHeight);
+  const startIndex = Math.floor(scrollTop / itemHeight);
+  const endIndex = startIndex + visibleCount;
+  
+  return items.slice(startIndex, endIndex).map(item => renderItem(item));
+}`,
+                    tools: ['react-window', 'react-virtualized', 'vue-virtual-scroller']
+                },
+                {
+                    title: '3. Lazy Load Images in Galleries',
+                    description: 'Load images as users scroll through galleries.',
+                    code: `<!-- Use native lazy loading -->
+<div class="gallery">
+  <img src="image1.jpg" loading="lazy" alt="Image 1">
+  <img src="image2.jpg" loading="lazy" alt="Image 2">
+  <!-- Images load only when visible -->
+</div>
+
+<!-- Or use Intersection Observer API -->
+<script>
+  const images = document.querySelectorAll('.gallery img[data-src]');
+  const imageObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        imageObserver.unobserve(img);
+      }
+    });
+  });
+  
+  images.forEach(img => imageObserver.observe(img));
+</script>`
+                },
+                {
+                    title: '4. Optimize Forms',
+                    description: 'Split long forms into multiple steps or use progressive disclosure.',
+                    code: `<!-- Multi-step form -->
+<form id="multi-step-form">
+  <div class="form-step active" data-step="1">
+    <!-- Step 1 fields -->
+  </div>
+  <div class="form-step" data-step="2">
+    <!-- Step 2 fields -->
+  </div>
+  <div class="form-step" data-step="3">
+    <!-- Step 3 fields -->
+  </div>
+</form>
+
+<!-- Only validate/process visible step -->
+<script>
+  function showStep(stepNumber) {
+    document.querySelectorAll('.form-step').forEach(step => {
+      step.classList.remove('active');
+    });
+    document.querySelector('[data-step="' + stepNumber + '"]').classList.add('active');
+  }
+</script>`
+                },
+                {
+                    title: '5. Defer Heavy Widgets',
+                    description: 'Load widgets and iframes after the main content.',
+                    code: `<!-- Load widget after page load -->
+<script>
+  window.addEventListener('load', () => {
+    // Load heavy widget after everything else
+    const script = document.createElement('script');
+    script.src = 'heavy-widget.js';
+    document.body.appendChild(script);
+  });
+</script>
+
+<!-- Or use async/defer for iframes -->
+<iframe src="widget.html" 
+        loading="lazy"
+        style="width: 100%; height: 600px;">
+</iframe>`
+                }
+            ],
+            priority: 'High',
+            estimatedSavings: 'Improve interactivity by 20-50%'
+        }
+    };
+    
+    return fixGuides[issueType] || null;
+}
+
+// Update performance overview cards
+function updatePerformanceOverview(score, gradeInfo, heavyImages, slowJsCss, slowSections, slowComponents, renderBlocking) {
+    const totalIssues = heavyImages + slowJsCss + slowSections + slowComponents + renderBlocking;
+    
+    // Update score circle
+    const scoreCircle = document.getElementById('performanceScoreCircle');
+    const scoreValue = document.getElementById('performanceScoreValue');
+    const scoreGrade = document.getElementById('performanceScoreGrade');
+    const scoreDescription = document.getElementById('performanceScoreDescription');
+    
+    if (scoreCircle && scoreValue) {
+        const circumference = 2 * Math.PI * 54; // radius is 54
+        const offset = circumference - (score / 100) * circumference;
+        scoreCircle.style.strokeDasharray = `${circumference} ${circumference}`;
+        scoreCircle.style.strokeDashoffset = offset;
+        scoreCircle.style.stroke = gradeInfo.color;
+        scoreValue.textContent = score;
+        scoreValue.style.color = gradeInfo.color;
+    }
+    
+    if (scoreGrade) {
+        scoreGrade.textContent = gradeInfo.grade;
+        scoreGrade.style.color = gradeInfo.color;
+        scoreGrade.style.borderColor = gradeInfo.color;
+    }
+    
+    if (scoreDescription) {
+        scoreDescription.textContent = gradeInfo.text + ' • ' + totalIssues + ' issue' + (totalIssues !== 1 ? 's' : '') + ' found';
+    }
+    
+    // Update metric cards
+    const metrics = [
+        { id: 'metricHeavyImages', statusId: 'statusHeavyImages', value: heavyImages, threshold: 3 },
+        { id: 'metricSlowFiles', statusId: 'statusSlowFiles', value: slowJsCss, threshold: 5 },
+        { id: 'metricSlowSections', statusId: 'statusSlowSections', value: slowSections, threshold: 5 },
+        { id: 'metricSlowComponents', statusId: 'statusSlowComponents', value: slowComponents, threshold: 3 },
+        { id: 'metricRenderBlocking', statusId: 'statusRenderBlocking', value: renderBlocking, threshold: 2 },
+        { id: 'metricTotalIssues', statusId: 'statusTotalIssues', value: totalIssues, threshold: 10 }
+    ];
+    
+    metrics.forEach(metric => {
+        const valueEl = document.getElementById(metric.id);
+        const statusEl = document.getElementById(metric.statusId);
+        
+        if (valueEl) valueEl.textContent = metric.value;
+        if (statusEl) {
+            const status = getPerformanceStatus(metric.value, metric.threshold, 'general');
+            statusEl.textContent = status.status;
+            statusEl.className = 'metric-status ' + status.class;
+        }
+    });
+}
+
+// Generate pages summary table
+function generatePagesPerformanceSummary(allHeavyImages, allSlowJsCss, allSlowHtmlSections, allSlowComponents, allRenderBlocking) {
+    const pagesSummary = {};
+    
+    // Count issues per page
+    allHeavyImages.forEach(img => {
+        if (!pagesSummary[img.page_url]) {
+            pagesSummary[img.page_url] = {
+                url: img.page_url,
+                title: img.page_title,
+                heavyImages: 0,
+                slowJsCss: 0,
+                slowSections: 0,
+                slowComponents: 0,
+                renderBlocking: 0
+            };
+        }
+        pagesSummary[img.page_url].heavyImages++;
+    });
+    
+    allSlowJsCss.forEach(file => {
+        if (!pagesSummary[file.page_url]) {
+            pagesSummary[file.page_url] = {
+                url: file.page_url,
+                title: file.page_title,
+                heavyImages: 0,
+                slowJsCss: 0,
+                slowSections: 0,
+                slowComponents: 0,
+                renderBlocking: 0
+            };
+        }
+        pagesSummary[file.page_url].slowJsCss++;
+    });
+    
+    allSlowHtmlSections.forEach(section => {
+        if (!pagesSummary[section.page_url]) {
+            pagesSummary[section.page_url] = {
+                url: section.page_url,
+                title: section.page_title,
+                heavyImages: 0,
+                slowJsCss: 0,
+                slowSections: 0,
+                slowComponents: 0,
+                renderBlocking: 0
+            };
+        }
+        pagesSummary[section.page_url].slowSections++;
+    });
+    
+    allSlowComponents.forEach(component => {
+        if (!pagesSummary[component.page_url]) {
+            pagesSummary[component.page_url] = {
+                url: component.page_url,
+                title: component.page_title,
+                heavyImages: 0,
+                slowJsCss: 0,
+                slowSections: 0,
+                slowComponents: 0,
+                renderBlocking: 0
+            };
+        }
+        pagesSummary[component.page_url].slowComponents++;
+    });
+    
+    allRenderBlocking.forEach(resource => {
+        if (!pagesSummary[resource.page_url]) {
+            pagesSummary[resource.page_url] = {
+                url: resource.page_url,
+                title: resource.page_title,
+                heavyImages: 0,
+                slowJsCss: 0,
+                slowSections: 0,
+                slowComponents: 0,
+                renderBlocking: 0
+            };
+        }
+        pagesSummary[resource.page_url].renderBlocking++;
+    });
+    
+    // Convert to array and calculate totals
+    const pagesArray = Object.values(pagesSummary).map(page => ({
+        ...page,
+        totalIssues: page.heavyImages + page.slowJsCss + page.slowSections + page.slowComponents + page.renderBlocking
+    }));
+    
+    // Sort by total issues (descending)
+    pagesArray.sort((a, b) => b.totalIssues - a.totalIssues);
+    
+    return pagesArray;
+}
+
+// Display pages performance summary
+function displayPagesPerformanceSummary(pagesArray) {
+    const summaryContainer = document.getElementById('performancePagesSummary');
+    const summaryBody = document.getElementById('performancePagesSummaryBody');
+    
+    if (!summaryContainer || !summaryBody) return;
+    
+    if (pagesArray.length === 0) {
+        summaryContainer.style.display = 'none';
+        return;
+    }
+    
+    summaryContainer.style.display = 'block';
+    
+    let html = '';
+    pagesArray.forEach(page => {
+        const urlDisplay = page.url.length > 60 ? page.url.substring(0, 57) + '...' : page.url;
+        
+        html += `
+            <tr>
+                <td class="page-url-cell">
+                    <a href="${page.url}" target="_blank" title="${page.url}">${urlDisplay}</a>
+                    ${page.title ? `<div class="page-title-small">${page.title}</div>` : ''}
+                </td>
+                <td class="issue-count-cell">
+                    ${page.heavyImages > 0 ? `<span class="badge badge-warning">${page.heavyImages}</span>` : '<span class="text-success">0</span>'}
+                </td>
+                <td class="issue-count-cell">
+                    ${page.slowJsCss > 0 ? `<span class="badge badge-info">${page.slowJsCss}</span>` : '<span class="text-success">0</span>'}
+                </td>
+                <td class="issue-count-cell">
+                    ${page.slowSections > 0 ? `<span class="badge badge-warning">${page.slowSections}</span>` : '<span class="text-success">0</span>'}
+                </td>
+                <td class="issue-count-cell">
+                    ${page.slowComponents > 0 ? `<span class="badge badge-warning">${page.slowComponents}</span>` : '<span class="text-success">0</span>'}
+                </td>
+                <td class="issue-count-cell">
+                    ${page.renderBlocking > 0 ? `<span class="badge badge-danger">${page.renderBlocking}</span>` : '<span class="text-success">0</span>'}
+                </td>
+                <td class="issue-count-cell">
+                    <strong>${page.totalIssues}</strong>
+                </td>
+                <td class="actions-cell">
+                    <button class="btn btn-sm btn-primary" onclick="showPageDetailsByUrl('${page.url}')" title="View Page Details">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    summaryBody.innerHTML = html;
+}
+
 // Display performance analysis section
 function displayPerformanceAnalysis(data) {
-    if (!data.pages || data.pages.length === 0) return;
-    
-    const heavyImagesContainer = document.getElementById('heavyImagesContainer');
-    const slowJsCssContainer = document.getElementById('slowJsCssContainer');
-    const slowHtmlSectionsContainer = document.getElementById('slowHtmlSectionsContainer');
-    const slowComponentsContainer = document.getElementById('slowComponentsContainer');
-    const renderBlockingContainer = document.getElementById('renderBlockingContainer');
-    const pageFilter = document.getElementById('performancePageFilter');
-    
-    if (!heavyImagesContainer || !slowJsCssContainer || !slowHtmlSectionsContainer || 
-        !slowComponentsContainer || !renderBlockingContainer) return;
+    try {
+        if (!data || !data.pages || data.pages.length === 0) {
+            console.warn('No performance data available');
+            return;
+        }
+        
+        const heavyImagesContainer = document.getElementById('heavyImagesContainer');
+        const slowJsCssContainer = document.getElementById('slowJsCssContainer');
+        const slowHtmlSectionsContainer = document.getElementById('slowHtmlSectionsContainer');
+        const slowComponentsContainer = document.getElementById('slowComponentsContainer');
+        const renderBlockingContainer = document.getElementById('renderBlockingContainer');
+        const pageFilter = document.getElementById('performancePageFilter');
+        
+        if (!heavyImagesContainer || !slowJsCssContainer || !slowHtmlSectionsContainer || 
+            !slowComponentsContainer || !renderBlockingContainer) {
+            console.warn('Performance containers not found');
+            return;
+        }
     
     // Collect all performance data from all pages
     const allHeavyImages = [];
@@ -2119,6 +3159,7 @@ function displayPerformanceAnalysis(data) {
     
     // Populate page filter
     if (pageFilter && data.pages) {
+        pageFilter.innerHTML = '<option value="all">All Pages</option>';
         data.pages.forEach(page => {
             const option = document.createElement('option');
             option.value = page.url;
@@ -2127,157 +3168,638 @@ function displayPerformanceAnalysis(data) {
         });
     }
     
-    // Display heavy images
+    // Calculate performance score
+    const performanceScore = calculatePerformanceScore(
+        allHeavyImages.length,
+        allSlowJsCss.length,
+        allSlowHtmlSections.length,
+        allSlowComponents.length,
+        allRenderBlocking.length
+    );
+    const gradeInfo = getPerformanceGrade(performanceScore);
+    
+    // Update performance overview
+    updatePerformanceOverview(
+        performanceScore,
+        gradeInfo,
+        allHeavyImages.length,
+        allSlowJsCss.length,
+        allSlowHtmlSections.length,
+        allSlowComponents.length,
+        allRenderBlocking.length
+    );
+    
+    // Generate and display pages summary
+    const pagesSummary = generatePagesPerformanceSummary(
+        allHeavyImages,
+        allSlowJsCss,
+        allSlowHtmlSections,
+        allSlowComponents,
+        allRenderBlocking
+    );
+    displayPagesPerformanceSummary(pagesSummary);
+    
+    // Display heavy images with enhanced UI
     if (allHeavyImages.length === 0) {
-        heavyImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No heavy images detected.</p></div>';
+        heavyImagesContainer.innerHTML = `
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <p>No heavy images detected. Your images are optimized!</p>
+            </div>
+        `;
     } else {
-        let html = '<ul class="performance-list">';
-        allHeavyImages.slice(0, 50).forEach(img => {
+        let html = `
+            <div class="performance-issue-intro">
+                <div class="issue-description">
+                    <h4><i class="fas fa-info-circle"></i> About Heavy Images</h4>
+                    <p>Large image files significantly slow down page load times. Images over 200KB can cause:</p>
+                    <ul>
+                        <li>Increased bandwidth usage</li>
+                        <li>Slower page load times (especially on mobile)</li>
+                        <li>Poor user experience and higher bounce rates</li>
+                        <li>Negative impact on SEO rankings</li>
+                    </ul>
+                    <p><strong>Recommended:</strong> Keep images under 100KB for web use. Use compression, modern formats (WebP), and lazy loading.</p>
+                </div>
+            </div>
+            <div class="performance-items-list">
+        `;
+        
+        allHeavyImages.slice(0, 20).forEach((img, index) => {
             const sizeDisplay = img.size_mb >= 1 ? `${img.size_mb.toFixed(2)} MB` : `${img.size_kb.toFixed(2)} KB`;
+            const isCritical = img.size_kb > 500;
+            const priority = isCritical ? 'Critical' : img.size_kb > 200 ? 'High' : 'Medium';
+            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            
             html += `
-                <li class="performance-item">
-                    <div class="performance-item-header">
-                        <strong>${sizeDisplay}</strong>
-                        <span class="badge badge-warning">Heavy</span>
+                <div class="performance-issue-card ${priorityClass}">
+                    <div class="issue-card-header">
+                        <div class="issue-priority">
+                            <span class="priority-badge ${priorityClass}">
+                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                ${priority} Priority
+                            </span>
+                            <span class="issue-size">${sizeDisplay}</span>
+                        </div>
+                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('heavyImage', ${index})">
+                            <i class="fas fa-wrench"></i> How to Fix
+                        </button>
                     </div>
-                    <div class="performance-item-content">
-                        <div><strong>Image:</strong> <a href="${img.url}" target="_blank">${img.url.substring(0, 60)}${img.url.length > 60 ? '...' : ''}</a></div>
-                        <div><strong>Page:</strong> <a href="${img.page_url}" target="_blank">${img.page_title}</a></div>
-                        <div><strong>Location:</strong> ${img.location}</div>
-                        ${img.width && img.height ? `<div><strong>Dimensions:</strong> ${img.width}×${img.height}px</div>` : ''}
-                        <div><strong>Format:</strong> ${img.format}</div>
-                        <div class="performance-highlight" style="border: 2px solid #ffc107; padding: 5px; margin-top: 5px; background: #fff3cd;">
-                            <strong>HTML:</strong> <code>${img.html_snippet}</code>
+                    <div class="issue-card-content">
+                        <div class="issue-details-grid">
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-image"></i> Image URL:</strong>
+                                <a href="${img.url}" target="_blank" title="${img.url}">
+                                    ${img.url.length > 60 ? img.url.substring(0, 57) + '...' : img.url}
+                                </a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
+                                <a href="${img.page_url}" target="_blank">${img.page_title || img.page_url}</a>
+                            </div>
+                            ${img.width && img.height ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-expand-arrows-alt"></i> Dimensions:</strong>
+                                ${img.width}×${img.height}px
+                            </div>
+                            ` : ''}
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file"></i> Format:</strong>
+                                ${img.format || 'Unknown'}
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-map-marker-alt"></i> Location:</strong>
+                                ${img.location || 'Unknown'}
+                            </div>
+                        </div>
+                        ${img.html_snippet ? `
+                        <div class="issue-code-preview">
+                            <strong>Current HTML:</strong>
+                            <pre><code>${img.html_snippet}</code></pre>
+                        </div>
+                        ` : ''}
+                        <div class="issue-impact">
+                            <strong>Impact:</strong>
+                            <span class="impact-text">This image adds ${sizeDisplay} to page load. Optimizing could save approximately ${(img.size_kb * 0.7).toFixed(0)}KB (70% reduction).</span>
                         </div>
                     </div>
-                </li>
+                </div>
             `;
         });
-        if (allHeavyImages.length > 50) {
-            html += `<li><em>... and ${allHeavyImages.length - 50} more heavy images</em></li>`;
+        
+        if (allHeavyImages.length > 20) {
+            html += `<div class="performance-more-items">... and ${allHeavyImages.length - 20} more heavy images</div>`;
         }
-        html += '</ul>';
+        
+        html += `</div>`;
         heavyImagesContainer.innerHTML = html;
+        
+        // Store heavy images data for fix guide
+        window.performanceHeavyImages = allHeavyImages;
     }
     
-    // Display slow JS/CSS
+    // Display slow JS/CSS with enhanced UI
     if (allSlowJsCss.length === 0) {
-        slowJsCssContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large JS/CSS files detected.</p></div>';
+        slowJsCssContainer.innerHTML = `
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <p>No large JS/CSS files detected. Your files are optimized!</p>
+            </div>
+        `;
     } else {
-        let html = '<ul class="performance-list">';
-        allSlowJsCss.slice(0, 30).forEach(file => {
+        let html = `
+            <div class="performance-issue-intro">
+                <div class="issue-description">
+                    <h4><i class="fas fa-info-circle"></i> About Slow JS/CSS Files</h4>
+                    <p>Large JavaScript and CSS files significantly impact page load times:</p>
+                    <ul>
+                        <li>JavaScript files over 100KB slow down parsing and execution</li>
+                        <li>CSS files block rendering until fully loaded</li>
+                        <li>Unminified code contains unnecessary whitespace and comments</li>
+                        <li>Unused code increases bundle size unnecessarily</li>
+                    </ul>
+                    <p><strong>Recommended:</strong> Keep JS files under 100KB, CSS files under 50KB. Use minification, compression, and code splitting.</p>
+                </div>
+            </div>
+            <div class="performance-items-list">
+        `;
+        
+        allSlowJsCss.slice(0, 20).forEach((file, index) => {
+            const sizeKB = file.size_kb || 0;
+            const isCritical = sizeKB > 200;
+            const priority = isCritical ? 'Critical' : sizeKB > 100 ? 'High' : 'Medium';
+            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            
             html += `
-                <li class="performance-item">
-                    <div class="performance-item-header">
-                        <strong>${file.size_kb.toFixed(2)} KB</strong>
-                        <span class="badge badge-info">${file.type}</span>
+                <div class="performance-issue-card ${priorityClass}">
+                    <div class="issue-card-header">
+                        <div class="issue-priority">
+                            <span class="priority-badge ${priorityClass}">
+                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                ${priority} Priority
+                            </span>
+                            <span class="issue-size">${sizeKB.toFixed(2)} KB</span>
+                        </div>
+                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('slowJsCss', ${index})">
+                            <i class="fas fa-wrench"></i> How to Fix
+                        </button>
                     </div>
-                    <div class="performance-item-content">
-                        <div><strong>File:</strong> <a href="${file.url}" target="_blank">${file.url.substring(0, 60)}${file.url.length > 60 ? '...' : ''}</a></div>
-                        <div><strong>Page:</strong> <a href="${file.page_url}" target="_blank">${file.page_title}</a></div>
-                        ${file.is_render_blocking ? '<div><span class="badge badge-danger">Render-Blocking</span></div>' : ''}
+                    <div class="issue-card-content">
+                        <div class="issue-details-grid">
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file-code"></i> File URL:</strong>
+                                <a href="${file.url}" target="_blank" title="${file.url}">
+                                    ${file.url.length > 60 ? file.url.substring(0, 57) + '...' : file.url}
+                                </a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
+                                <a href="${file.page_url}" target="_blank">${file.page_title || file.page_url}</a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file"></i> File Type:</strong>
+                                ${file.type || 'Unknown'}
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-hdd"></i> File Size:</strong>
+                                ${sizeKB >= 1024 ? (sizeKB / 1024).toFixed(2) + ' MB' : sizeKB.toFixed(2) + ' KB'}
+                            </div>
+                            ${file.is_render_blocking ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-ban"></i> Render-Blocking:</strong>
+                                <span class="text-danger">Yes - This file blocks page rendering</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="issue-impact">
+                            <strong>Impact:</strong>
+                            <span class="impact-text">This ${file.type || 'file'} (${sizeKB.toFixed(2)} KB) ${file.is_render_blocking ? 'is blocking page rendering and ' : ''}slows down page load. Optimizing could reduce file size by 60-80% and improve load time by ${Math.round(sizeKB / 50)}-${Math.round(sizeKB / 30)}ms.</span>
+                        </div>
                     </div>
-                </li>
+                </div>
             `;
         });
-        if (allSlowJsCss.length > 30) {
-            html += `<li><em>... and ${allSlowJsCss.length - 30} more files</em></li>`;
+        
+        if (allSlowJsCss.length > 20) {
+            html += `<div class="performance-more-items">... and ${allSlowJsCss.length - 20} more slow JS/CSS files</div>`;
         }
-        html += '</ul>';
+        
+        html += `</div>`;
         slowJsCssContainer.innerHTML = html;
+        
+        // Store data for fix guide
+        window.performanceSlowJsCss = allSlowJsCss;
     }
     
-    // Display slow HTML sections
+    // Display slow HTML sections with enhanced UI
     if (allSlowHtmlSections.length === 0) {
-        slowHtmlSectionsContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No problematic HTML sections detected.</p></div>';
+        slowHtmlSectionsContainer.innerHTML = `
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <p>No problematic HTML sections detected. Your HTML structure is optimized!</p>
+            </div>
+        `;
     } else {
-        let html = '<ul class="performance-list">';
-        allSlowHtmlSections.slice(0, 30).forEach(section => {
+        let html = `
+            <div class="performance-issue-intro">
+                <div class="issue-description">
+                    <h4><i class="fas fa-info-circle"></i> About Slow HTML Sections</h4>
+                    <p>Complex or deeply nested HTML structures can slow down page rendering. Issues include:</p>
+                    <ul>
+                        <li>Excessive nesting depth (harder for browser to parse)</li>
+                        <li>Too many child elements in a single container</li>
+                        <li>Large sections with many images</li>
+                        <li>Complex DOM structures that slow down JavaScript</li>
+                    </ul>
+                    <p><strong>Recommended:</strong> Keep nesting depth under 10 levels, limit children per container to 50, and split large sections into smaller components.</p>
+                </div>
+            </div>
+            <div class="performance-items-list">
+        `;
+        
+        allSlowHtmlSections.slice(0, 20).forEach((section, index) => {
+            const isCritical = section.nesting_depth > 15 || section.children_count > 100;
+            const priority = isCritical ? 'Critical' : section.nesting_depth > 10 || section.children_count > 50 ? 'High' : 'Medium';
+            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            
             html += `
-                <li class="performance-item">
-                    <div class="performance-item-header">
-                        <strong>${section.element}</strong>
-                        <span class="badge badge-warning">Slow</span>
+                <div class="performance-issue-card ${priorityClass}">
+                    <div class="issue-card-header">
+                        <div class="issue-priority">
+                            <span class="priority-badge ${priorityClass}">
+                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                ${priority} Priority
+                            </span>
+                            <span class="issue-size">${section.element || 'HTML Section'}</span>
+                        </div>
+                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('slowHtmlSection', ${index})">
+                            <i class="fas fa-wrench"></i> How to Fix
+                        </button>
                     </div>
-                    <div class="performance-item-content">
-                        <div><strong>Page:</strong> <a href="${section.page_url}" target="_blank">${section.page_title}</a></div>
-                        <div><strong>Tag:</strong> ${section.tag}</div>
-                        <div><strong>Issues:</strong> ${section.issues.join(', ')}</div>
-                        <div><strong>Nesting Depth:</strong> ${section.nesting_depth} levels</div>
-                        <div><strong>Children:</strong> ${section.children_count} elements</div>
-                        ${section.images_count > 0 ? `<div><strong>Images:</strong> ${section.images_count}</div>` : ''}
-                        <div class="performance-highlight" style="border: 2px solid #ffc107; padding: 5px; margin-top: 5px; background: #fff3cd;">
-                            <strong>HTML:</strong> <code>${section.html_snippet.substring(0, 200)}${section.html_snippet.length > 200 ? '...' : ''}</code>
+                    <div class="issue-card-content">
+                        <div class="issue-details-grid">
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
+                                <a href="${section.page_url}" target="_blank">${section.page_title || section.page_url}</a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-code"></i> HTML Tag:</strong>
+                                ${section.tag || 'Unknown'}
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-layer-group"></i> Nesting Depth:</strong>
+                                ${section.nesting_depth || 0} levels
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-sitemap"></i> Child Elements:</strong>
+                                ${section.children_count || 0} elements
+                            </div>
+                            ${section.images_count > 0 ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-image"></i> Images:</strong>
+                                ${section.images_count} images
+                            </div>
+                            ` : ''}
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-exclamation-triangle"></i> Issues:</strong>
+                                ${section.issues ? section.issues.join(', ') : 'Performance issues detected'}
+                            </div>
+                        </div>
+                        ${section.html_snippet ? `
+                        <div class="issue-code-preview">
+                            <strong>HTML Code (Preview):</strong>
+                            <pre><code>${section.html_snippet.length > 500 ? section.html_snippet.substring(0, 497) + '...' : section.html_snippet}</code></pre>
+                        </div>
+                        ` : ''}
+                        <div class="issue-impact">
+                            <strong>Impact:</strong>
+                            <span class="impact-text">This HTML section has ${section.nesting_depth || 0} levels of nesting and ${section.children_count || 0} child elements, which slows down browser rendering. Simplifying the structure could improve page load time by 10-30%.</span>
                         </div>
                     </div>
-                </li>
+                </div>
             `;
         });
-        if (allSlowHtmlSections.length > 30) {
-            html += `<li><em>... and ${allSlowHtmlSections.length - 30} more sections</em></li>`;
+        
+        if (allSlowHtmlSections.length > 20) {
+            html += `<div class="performance-more-items">... and ${allSlowHtmlSections.length - 20} more slow HTML sections</div>`;
         }
-        html += '</ul>';
+        
+        html += `</div>`;
         slowHtmlSectionsContainer.innerHTML = html;
+        
+        // Store data for fix guide
+        window.performanceSlowHtmlSections = allSlowHtmlSections;
     }
     
-    // Display slow components
+    // Display slow components with enhanced UI
     if (allSlowComponents.length === 0) {
-        slowComponentsContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No slow components detected.</p></div>';
+        slowComponentsContainer.innerHTML = `
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <p>No slow components detected. Your page components are optimized!</p>
+            </div>
+        `;
     } else {
-        let html = '<ul class="performance-list">';
-        allSlowComponents.slice(0, 30).forEach(component => {
+        let html = `
+            <div class="performance-issue-intro">
+                <div class="issue-description">
+                    <h4><i class="fas fa-info-circle"></i> About Slow Components</h4>
+                    <p>Certain HTML components can slow down page rendering and interactivity:</p>
+                    <ul>
+                        <li>Large tables with many rows</li>
+                        <li>Complex forms with many fields</li>
+                        <li>Image galleries with many images</li>
+                        <li>Widgets and iframes that load external content</li>
+                    </ul>
+                    <p><strong>Recommended:</strong> Optimize components by lazy loading, pagination, virtualization, or splitting into smaller parts.</p>
+                </div>
+            </div>
+            <div class="performance-items-list">
+        `;
+        
+        allSlowComponents.slice(0, 20).forEach((component, index) => {
+            const isCritical = (component.rows_count && component.rows_count > 100) || (component.images_count && component.images_count > 50);
+            const priority = isCritical ? 'Critical' : 'High';
+            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            
             html += `
-                <li class="performance-item">
-                    <div class="performance-item-header">
-                        <strong>${component.type}</strong>
-                        <span class="badge badge-warning">Slow</span>
+                <div class="performance-issue-card ${priorityClass}">
+                    <div class="issue-card-header">
+                        <div class="issue-priority">
+                            <span class="priority-badge ${priorityClass}">
+                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                ${priority} Priority
+                            </span>
+                            <span class="issue-size">${component.type || 'Component'}</span>
+                        </div>
+                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('slowComponent', ${index})">
+                            <i class="fas fa-wrench"></i> How to Fix
+                        </button>
                     </div>
-                    <div class="performance-item-content">
-                        <div><strong>Page:</strong> <a href="${component.page_url}" target="_blank">${component.page_title}</a></div>
-                        <div><strong>Location:</strong> ${component.location}</div>
-                        <div><strong>Issue:</strong> ${component.issue}</div>
-                        ${component.images_count !== undefined ? `<div><strong>Images:</strong> ${component.images_count}</div>` : ''}
-                        ${component.rows_count !== undefined ? `<div><strong>Rows:</strong> ${component.rows_count}</div>` : ''}
-                        ${component.src ? `<div><strong>Source:</strong> <a href="${component.src}" target="_blank">${component.src.substring(0, 50)}${component.src.length > 50 ? '...' : ''}</a></div>` : ''}
-                    </div>
-                </li>
-            `;
-        });
-        if (allSlowComponents.length > 30) {
-            html += `<li><em>... and ${allSlowComponents.length - 30} more components</em></li>`;
-        }
-        html += '</ul>';
-        slowComponentsContainer.innerHTML = html;
-    }
-    
-    // Display render-blocking resources
-    if (allRenderBlocking.length === 0) {
-        renderBlockingContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No render-blocking resources detected.</p></div>';
-    } else {
-        let html = '<ul class="performance-list">';
-        allRenderBlocking.forEach(resource => {
-            html += `
-                <li class="performance-item">
-                    <div class="performance-item-header">
-                        <strong>${resource.type}</strong>
-                        <span class="badge badge-danger">Render-Blocking</span>
-                    </div>
-                    <div class="performance-item-content">
-                        <div><strong>Resource:</strong> <a href="${resource.url}" target="_blank">${resource.url.substring(0, 60)}${resource.url.length > 60 ? '...' : ''}</a></div>
-                        <div><strong>Page:</strong> <a href="${resource.page_url}" target="_blank">${resource.page_title}</a></div>
-                        <div><strong>Size:</strong> ${resource.size_kb.toFixed(2)} KB</div>
-                        ${resource.has_async !== undefined ? `<div><strong>Async:</strong> ${resource.has_async ? 'Yes' : 'No'}</div>` : ''}
-                        ${resource.has_defer !== undefined ? `<div><strong>Defer:</strong> ${resource.has_defer ? 'Yes' : 'No'}</div>` : ''}
-                        <div class="performance-suggestion">
-                            <strong>💡 Suggestion:</strong> Add <code>async</code> or <code>defer</code> attribute to prevent render-blocking.
+                    <div class="issue-card-content">
+                        <div class="issue-details-grid">
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
+                                <a href="${component.page_url}" target="_blank">${component.page_title || component.page_url}</a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-map-marker-alt"></i> Location:</strong>
+                                ${component.location || 'Unknown'}
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-exclamation-circle"></i> Issue:</strong>
+                                ${component.issue || 'Performance issue detected'}
+                            </div>
+                            ${component.images_count !== undefined ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-image"></i> Images:</strong>
+                                ${component.images_count} images
+                            </div>
+                            ` : ''}
+                            ${component.rows_count !== undefined ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-table"></i> Table Rows:</strong>
+                                ${component.rows_count} rows
+                            </div>
+                            ` : ''}
+                            ${component.src ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-link"></i> Source:</strong>
+                                <a href="${component.src}" target="_blank" title="${component.src}">
+                                    ${component.src.length > 50 ? component.src.substring(0, 47) + '...' : component.src}
+                                </a>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="issue-impact">
+                            <strong>Impact:</strong>
+                            <span class="impact-text">This ${component.type || 'component'} is causing performance issues${component.rows_count ? ` with ${component.rows_count} rows` : ''}${component.images_count ? ` and ${component.images_count} images` : ''}. Optimizing this component could improve page responsiveness significantly.</span>
                         </div>
                     </div>
-                </li>
+                </div>
             `;
         });
-        html += '</ul>';
-        renderBlockingContainer.innerHTML = html;
+        
+        if (allSlowComponents.length > 20) {
+            html += `<div class="performance-more-items">... and ${allSlowComponents.length - 20} more slow components</div>`;
+        }
+        
+        html += `</div>`;
+        slowComponentsContainer.innerHTML = html;
+        
+        // Store data for fix guide
+        window.performanceSlowComponents = allSlowComponents;
     }
+    
+    // Display render-blocking resources with enhanced UI
+    if (allRenderBlocking.length === 0) {
+        renderBlockingContainer.innerHTML = `
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <p>No render-blocking resources detected. Your resources are optimized!</p>
+            </div>
+        `;
+    } else {
+        let html = `
+            <div class="performance-issue-intro">
+                <div class="issue-description">
+                    <h4><i class="fas fa-info-circle"></i> About Render-Blocking Resources</h4>
+                    <p>Render-blocking resources prevent the browser from displaying page content until they're loaded:</p>
+                    <ul>
+                        <li>JavaScript files in the <code>&lt;head&gt;</code> without async/defer</li>
+                        <li>CSS stylesheets that block rendering</li>
+                        <li>Large fonts that delay text rendering</li>
+                        <li>Synchronous scripts that halt HTML parsing</li>
+                    </ul>
+                    <p><strong>Recommended:</strong> Use async/defer for scripts, inline critical CSS, and preload important resources to improve First Contentful Paint (FCP) by 1-3 seconds.</p>
+                </div>
+            </div>
+            <div class="performance-items-list">
+        `;
+        
+        allRenderBlocking.forEach((resource, index) => {
+            const isCritical = resource.size_kb && resource.size_kb > 100;
+            const priority = isCritical ? 'Critical' : 'High';
+            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            
+            html += `
+                <div class="performance-issue-card ${priorityClass}">
+                    <div class="issue-card-header">
+                        <div class="issue-priority">
+                            <span class="priority-badge ${priorityClass}">
+                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                ${priority} Priority
+                            </span>
+                            <span class="issue-size">${resource.type || 'Resource'}</span>
+                        </div>
+                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('renderBlocking', ${index})">
+                            <i class="fas fa-wrench"></i> How to Fix
+                        </button>
+                    </div>
+                    <div class="issue-card-content">
+                        <div class="issue-details-grid">
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
+                                <a href="${resource.page_url}" target="_blank">${resource.page_title || resource.page_url}</a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-link"></i> Resource URL:</strong>
+                                <a href="${resource.url}" target="_blank" title="${resource.url}">
+                                    ${resource.url.length > 60 ? resource.url.substring(0, 57) + '...' : resource.url}
+                                </a>
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-hdd"></i> File Size:</strong>
+                                ${resource.size_kb ? resource.size_kb.toFixed(2) + ' KB' : 'Unknown'}
+                            </div>
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-file"></i> Resource Type:</strong>
+                                ${resource.type || 'Unknown'}
+                            </div>
+                            ${resource.has_async !== undefined ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-bolt"></i> Has Async:</strong>
+                                <span class="${resource.has_async ? 'text-success' : 'text-danger'}">
+                                    ${resource.has_async ? 'Yes ✓' : 'No ✗'}
+                                </span>
+                            </div>
+                            ` : ''}
+                            ${resource.has_defer !== undefined ? `
+                            <div class="issue-detail">
+                                <strong><i class="fas fa-clock"></i> Has Defer:</strong>
+                                <span class="${resource.has_defer ? 'text-success' : 'text-danger'}">
+                                    ${resource.has_defer ? 'Yes ✓' : 'No ✗'}
+                                </span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="issue-impact">
+                            <strong>Impact:</strong>
+                            <span class="impact-text">This ${resource.type || 'resource'} is blocking page rendering. Adding async/defer attributes or optimizing loading could improve First Contentful Paint by 1-2 seconds and reduce perceived load time.</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        renderBlockingContainer.innerHTML = html;
+        
+        // Store data for fix guide
+        window.performanceRenderBlocking = allRenderBlocking;
+    }
+    } catch (error) {
+        console.error('Error in displayPerformanceAnalysis:', error);
+        console.error('Error stack:', error.stack);
+        // Show error message in containers
+        const containers = [
+            heavyImagesContainer,
+            slowJsCssContainer,
+            slowHtmlSectionsContainer,
+            slowComponentsContainer,
+            renderBlockingContainer
+        ];
+        containers.forEach(container => {
+            if (container) {
+                container.innerHTML = `<div class="error">Error loading performance data: ${error.message}. Please check console for details.</div>`;
+            }
+        });
+    }
+}
+
+// Show performance fix guide modal
+function showPerformanceFixGuide(issueType, issueIndex) {
+    // Get the appropriate data based on issue type
+    let issueData = {};
+    if (issueType === 'heavyImage' && window.performanceHeavyImages) {
+        issueData = window.performanceHeavyImages[issueIndex] || {};
+    } else if (issueType === 'slowJsCss' && window.performanceSlowJsCss) {
+        issueData = window.performanceSlowJsCss[issueIndex] || {};
+    } else if (issueType === 'slowHtmlSection' && window.performanceSlowHtmlSections) {
+        issueData = window.performanceSlowHtmlSections[issueIndex] || {};
+    } else if (issueType === 'slowComponent' && window.performanceSlowComponents) {
+        issueData = window.performanceSlowComponents[issueIndex] || {};
+    } else if (issueType === 'renderBlocking' && window.performanceRenderBlocking) {
+        issueData = window.performanceRenderBlocking[issueIndex] || {};
+    }
+    
+    const fixGuide = generateFixGuide(issueType, issueData);
+    
+    if (!fixGuide) {
+        alert('Fix guide not available for this issue type.');
+        return;
+    }
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('performanceFixGuideModal');
+    if (existingModal) existingModal.remove();
+    
+    let stepsHTML = '';
+    fixGuide.steps.forEach((step, index) => {
+        stepsHTML += `
+            <div class="fix-step">
+                <div class="step-title">${step.title}</div>
+                <div class="step-description">${step.description}</div>
+                ${step.code ? `
+                <div class="step-code">
+                    <code>${step.code}</code>
+                </div>
+                ` : ''}
+                ${step.tools && step.tools.length > 0 ? `
+                <div class="step-tools">
+                    <strong>Recommended Tools:</strong>
+                    ${step.tools.map(tool => `<span>${tool}</span>`).join('')}
+                </div>
+                ` : ''}
+                ${step.note ? `
+                <div class="step-note">
+                    <strong>Note:</strong> ${step.note}
+                </div>
+                ` : ''}
+            </div>
+        `;
+    });
+    
+    const modalHTML = `
+        <div class="modal fix-guide-modal" id="performanceFixGuideModal" style="display: block;">
+            <div class="fix-guide-modal-content">
+                <div class="fix-guide-header">
+                    <h2><i class="fas fa-wrench"></i> ${fixGuide.title}</h2>
+                    <span class="fix-guide-close" onclick="closePerformanceFixGuide()">&times;</span>
+                </div>
+                <div class="fix-guide-body">
+                    <div class="fix-guide-description">
+                        <strong>Priority:</strong> <span class="priority-badge priority-${fixGuide.priority.toLowerCase()}">${fixGuide.priority}</span>
+                        ${fixGuide.estimatedSavings ? `<br><strong>Estimated Savings:</strong> ${fixGuide.estimatedSavings}` : ''}
+                        <p style="margin-top: 12px; margin-bottom: 0;">${fixGuide.description}</p>
+                    </div>
+                    <div class="fix-guide-steps">
+                        ${stepsHTML}
+                    </div>
+                    ${fixGuide.estimatedSavings ? `
+                    <div class="estimated-savings">
+                        <i class="fas fa-chart-line"></i> ${fixGuide.estimatedSavings}
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    // Close on outside click
+    document.getElementById('performanceFixGuideModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closePerformanceFixGuide();
+        }
+    });
+}
+
+// Close performance fix guide modal
+function closePerformanceFixGuide() {
+    const modal = document.getElementById('performanceFixGuideModal');
+    if (modal) modal.remove();
 }
 
 // Update SEO Score in summary card from Advanced SEO Audit
@@ -2315,11 +3837,17 @@ function displayPagePower(data) {
         return;
     }
     
-    // Sort all pages by page power
-    const pagesWithPower = pages
+    // Get page classifications
+    const pageClassifications = stats.page_classifications || {};
+    const mainPagesCount = stats.main_pages_count || 0;
+    const utilityPagesCount = stats.utility_pages_count || 0;
+    
+    // Sort all pages by page power and classify
+    const allPagesWithPower = pages
         .filter(p => p.page_power !== undefined && p.page_power !== null)
         .map(p => {
             const linkData = linkAnalysis[p.url] || {};
+            const pageType = pageClassifications[p.url] || 'main';
             return {
                 url: p.url,
                 title: p.title || 'No Title',
@@ -2327,10 +3855,15 @@ function displayPagePower(data) {
                 word_count: p.word_count || 0,
                 status_code: p.status_code,
                 incoming_count: linkData.incoming_count || 0,
-                outgoing_count: linkData.outgoing_count || 0
+                outgoing_count: linkData.outgoing_count || 0,
+                page_type: pageType
             };
         })
         .sort((a, b) => b.power - a.power);
+    
+    // Separate main and utility pages
+    const pagesWithPower = allPagesWithPower.filter(p => p.page_type === 'main');
+    const utilityPagesWithPower = allPagesWithPower.filter(p => p.page_type === 'utility');
     
     // Power distribution data
     const powerDist = stats.power_distribution || { high: 0, medium: 0, low: 0 };
@@ -2344,16 +3877,16 @@ function displayPagePower(data) {
                     <div class="stat-label">Total Pages</div>
                 </div>
                 <div class="power-stat-item">
-                    <div class="stat-value">${stats.average_power || 0}</div>
-                    <div class="stat-label">Average Power</div>
+                    <div class="stat-value">${mainPagesCount}</div>
+                    <div class="stat-label">Main Pages</div>
+                </div>
+                <div class="power-stat-item">
+                    <div class="stat-value">${utilityPagesCount}</div>
+                    <div class="stat-label">Utility Pages</div>
                 </div>
                 <div class="power-stat-item">
                     <div class="stat-value">${stats.highest_power || 0}</div>
                     <div class="stat-label">Highest Power</div>
-                </div>
-                <div class="power-stat-item">
-                    <div class="stat-value">${stats.lowest_power || 0}</div>
-                    <div class="stat-label">Lowest Power</div>
                 </div>
             </div>
         </div>
@@ -2446,8 +3979,15 @@ function displayPagePower(data) {
         
         <!-- Pages Ranked by Power -->
         <div class="page-power-table-container">
-            <h3><i class="fas fa-list"></i> All Pages Ranked by Power</h3>
-            <div class="table-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3><i class="fas fa-list"></i> Main Pages Ranked by Power</h3>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="showUtilityPages" onchange="toggleUtilityPages()" style="cursor: pointer;">
+                    <span>Show Utility Pages (About, Privacy, Terms, etc.)</span>
+                </label>
+            </div>
+            <p class="section-description" style="margin-bottom: 15px;">Main content pages only. Utility pages (About, Privacy Policy, Terms, etc.) are filtered out. Toggle above to include them.</p>
+            <div class="table-container" id="mainPagesTable">
                 <table class="data-table">
                     <thead>
                         <tr>
@@ -2499,6 +4039,60 @@ function displayPagePower(data) {
                 </table>
             </div>
         </div>
+        
+        <!-- Utility Pages (Hidden by default) -->
+        ${utilityPagesWithPower.length > 0 ? `
+        <div class="page-power-table-container" id="utilityPagesSection" style="display: none; margin-top: 40px;">
+            <h3><i class="fas fa-list"></i> Utility Pages Ranked by Power</h3>
+            <p class="section-description" style="margin-bottom: 15px;">Pages like About, Privacy Policy, Terms of Service, etc.</p>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Page</th>
+                            <th>Page Power</th>
+                            <th>Incoming Links</th>
+                            <th>Outgoing Links</th>
+                            <th>Word Count</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${utilityPagesWithPower.map((page, index) => {
+                            const powerClass = page.power >= 70 ? 'power-high' : 
+                                              page.power >= 40 ? 'power-medium' : 'power-low';
+                            return `
+                                <tr>
+                                    <td><strong>#${index + 1}</strong></td>
+                                    <td>
+                                        <div class="page-url-cell">
+                                            <a href="${page.url}" target="_blank">${page.url}</a>
+                                            ${page.title ? `<div class="page-title-small">${page.title}</div>` : ''}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="page-power-badge ${powerClass}">${page.power.toFixed(1)}</span>
+                                    </td>
+                                    <td><span class="badge badge-info">${page.incoming_count}</span></td>
+                                    <td><span class="badge badge-info">${page.outgoing_count}</span></td>
+                                    <td>${page.word_count.toLocaleString()}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" onclick="showPageLinkAnalysis('${page.url}')" title="View Link Analysis">
+                                            <i class="fas fa-link"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" onclick="showPageDetailsByUrl('${page.url}')" title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        ` : ''}
     `;
     
     container.innerHTML = html;
@@ -2547,6 +4141,15 @@ function displayPagePower(data) {
                 }
             });
         }
+    }
+}
+
+// Toggle utility pages visibility
+function toggleUtilityPages() {
+    const checkbox = document.getElementById('showUtilityPages');
+    const utilitySection = document.getElementById('utilityPagesSection');
+    if (checkbox && utilitySection) {
+        utilitySection.style.display = checkbox.checked ? 'block' : 'none';
     }
 }
 

@@ -62,6 +62,9 @@ class SiteSpider(scrapy.Spider):
         # Track visited URLs to avoid duplicates
         self.visited_urls: Set[str] = set()
         
+        # Track discovered URLs (visited + scheduled)
+        self.discovered_urls: Set[str] = set()
+        
         # Store all internal links found for broken link checking
         self.all_internal_links: Set[str] = set()
         
@@ -71,6 +74,7 @@ class SiteSpider(scrapy.Spider):
             'links_found': 0,
             'internal_links': 0,
             'external_links': 0,
+            'discovered_urls': 0,
         }
         
         # Initialize performance analyzer if available
@@ -103,6 +107,7 @@ class SiteSpider(scrapy.Spider):
             return
         
         self.visited_urls.add(normalized_url)
+        self.discovered_urls.add(normalized_url)
         self.stats['pages_crawled'] += 1
         
         # Get current depth
@@ -125,6 +130,10 @@ class SiteSpider(scrapy.Spider):
                 
                 if normalized_link and normalized_link not in self.visited_urls:
                     self.all_internal_links.add(normalized_link)
+                    # Track discovered URL (even if not yet visited)
+                    if normalized_link not in self.discovered_urls:
+                        self.discovered_urls.add(normalized_link)
+                        self.stats['discovered_urls'] = len(self.discovered_urls)
                     yield scrapy.Request(
                         url=normalized_link,
                         callback=self.parse,

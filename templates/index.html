@@ -8,6 +8,79 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+    <!-- Top Navigation Bar -->
+    <nav class="top-navbar" id="topNavbar" style="display: none;">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <i class="fas fa-spider"></i>
+                <span>Website Analyzer</span>
+            </div>
+            <div class="navbar-menu">
+                <button class="nav-item" onclick="showMainContentNav()" id="nav-start-crawl">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Start New Crawl</span>
+                </button>
+                <button class="nav-item" onclick="showCompetitorAnalyzer()" id="nav-competitor">
+                    <i class="fas fa-balance-scale"></i>
+                    <span>Competitor Analyzer</span>
+                </button>
+                <button class="nav-item" onclick="showKeywordResearch()" id="nav-keyword">
+                    <i class="fas fa-key"></i>
+                    <span>Keyword Research</span>
+                </button>
+                <button class="nav-item" onclick="showHistory()" id="nav-history">
+                    <i class="fas fa-history"></i>
+                    <span>View History</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Top Progress Bar - Sticky at Top -->
+    <div class="top-progress-bar" id="topProgressBar" style="display: none;">
+        <div class="top-progress-container">
+            <div class="top-progress-header">
+                <div class="top-progress-title">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span id="topProgressMessageText">Crawling in Progress...</span>
+                </div>
+                <div class="top-progress-percentage">
+                    <span id="topProgressText">0%</span>
+                </div>
+            </div>
+            <div class="top-progress-bar-wrapper">
+                <div class="top-progress-fill" id="topProgressFill" style="width: 0%"></div>
+            </div>
+            <div class="top-progress-stats" id="topProgressStats" style="display: none;">
+                <div class="top-stat-item">
+                    <i class="fas fa-file-alt"></i>
+                    <span><strong id="topPagesCount">0</strong> Pages</span>
+                    <small id="topDiscoveredInfo" style="display: none;">of <strong id="topDiscoveredCount">0</strong></small>
+                </div>
+                <div class="top-stat-item">
+                    <i class="fas fa-link"></i>
+                    <span><strong id="topLinksCount">0</strong> Links</span>
+                </div>
+                <div class="top-stat-item">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span><strong id="topPagesPerSecond">0</strong>/sec</span>
+                </div>
+                <div class="top-stat-item">
+                    <i class="fas fa-clock"></i>
+                    <span id="topElapsedTime">0s</span>
+                </div>
+                <div class="top-stat-item">
+                    <i class="fas fa-hourglass-half"></i>
+                    <span id="topEstimatedTime">Calculating...</span>
+                </div>
+            </div>
+            <div class="top-progress-current-page" id="topCurrentPageInfo" style="display: none;">
+                <i class="fas fa-globe"></i>
+                <span id="topCurrentPageText">Loading...</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Login Modal -->
     <div id="loginModal" class="login-modal">
         <div class="login-modal-content">
@@ -60,9 +133,6 @@
             <div class="card">
                 <div class="section-header">
                     <h2><i class="fas fa-balance-scale"></i> Competitor Analyzer</h2>
-                    <button class="btn btn-secondary" onclick="hideCompetitorAnalyzer()">
-                        <i class="fas fa-times"></i> Close
-                    </button>
                 </div>
                 <div id="competitorContainer">
                     <form id="competitorForm" onsubmit="analyzeCompetitors(event)">
@@ -102,6 +172,235 @@
         </main>
     </div>
 
+    <!-- Keyword Research Section (Outside mainContent) -->
+    <div class="container" id="keywordResearchCard" style="display: none;">
+        <header>
+            <h1><i class="fas fa-search"></i> Keyword Research</h1>
+            <p class="subtitle">Discover keywords, topics, and content opportunities from competitors</p>
+        </header>
+        <main>
+            <div class="card">
+                <div class="section-header">
+                    <h2><i class="fas fa-key"></i> Keyword Research Tools</h2>
+                </div>
+                
+                <!-- Tabs Navigation -->
+                <div class="keyword-tabs-container">
+                    <div class="keyword-tabs">
+                        <button class="keyword-tab active" onclick="switchKeywordTab('research')" id="tab-research">
+                            <i class="fas fa-chart-line"></i> Discover Keywords
+                        </button>
+                        <button class="keyword-tab" onclick="switchKeywordTab('search')" id="tab-search">
+                            <i class="fas fa-search"></i> Search Keywords
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Keyword Research Tab Content -->
+                <div id="keyword-research-tab" class="keyword-tab-content active">
+                    <div id="keywordResearchContainer">
+                        <!-- Info Section -->
+                        <div class="info-section">
+                            <div class="info-card">
+                                <h3><i class="fas fa-info-circle"></i> What is Keyword Research?</h3>
+                                <p>Keyword Research helps you discover what keywords and topics your competitors are targeting. This tool crawls competitor websites, extracts keywords using advanced NLP, and identifies content opportunities you might be missing.</p>
+                            </div>
+                            <div class="info-card">
+                                <h3><i class="fas fa-lightbulb"></i> What You'll Get</h3>
+                                <ul>
+                                    <li><strong>Keyword Opportunities:</strong> Keywords competitors use that you don't</li>
+                                    <li><strong>Content Gaps:</strong> Topics and phrases you're missing</li>
+                                    <li><strong>Topic Clusters:</strong> Related keyword groups your competitors target</li>
+                                    <li><strong>Entities:</strong> Product names, menu items, brands mentioned</li>
+                                    <li><strong>FAQ Patterns:</strong> Questions your competitors answer</li>
+                                    <li><strong>Per-Competitor Analysis:</strong> Detailed breakdown for each competitor</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <form id="keywordResearchForm" onsubmit="startKeywordResearch(event)">
+                        <div class="form-group">
+                            <label for="yourDomain">
+                                <i class="fas fa-globe"></i> Your Website Domain
+                                <span class="tooltip-icon" title="Enter your website domain. This will be analyzed to compare against competitors.">
+                                    <i class="fas fa-question-circle"></i>
+                                </span>
+                            </label>
+                            <input 
+                                type="text" 
+                                id="yourDomain" 
+                                name="yourDomain" 
+                                placeholder="longhorn-menu.us or https://longhorn-menu.us" 
+                                required
+                            >
+                            <small class="help-text">
+                                <i class="fas fa-info-circle"></i> Enter your domain (with or without https://). 
+                                The tool will crawl up to 40 pages from your site to extract keywords.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label for="competitorUrls">
+                                <i class="fas fa-users"></i> Competitor URLs
+                                <span class="tooltip-icon" title="Enter competitor website URLs. You can analyze multiple competitors at once. Each competitor will be analyzed separately and you'll see individual results for each.">
+                                    <i class="fas fa-question-circle"></i>
+                                </span>
+                            </label>
+                            <textarea 
+                                id="competitorUrls" 
+                                name="competitorUrls" 
+                                rows="5"
+                                placeholder="https://competitor1.com&#10;https://competitor2.com&#10;https://competitor3.com"
+                                required
+                            ></textarea>
+                            <small class="help-text">
+                                <i class="fas fa-info-circle"></i> Enter one competitor URL per line (or comma-separated). 
+                                Each competitor will be crawled separately (up to 20 pages each). 
+                                You'll see aggregated results plus individual breakdowns for each competitor.
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="keywordResearchBtn">
+                            <i class="fas fa-search"></i> Start Keyword Research
+                        </button>
+                        <p class="form-note">
+                            <i class="fas fa-clock"></i> Analysis typically takes 2-5 minutes depending on the number of competitors and pages.
+                        </p>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Search Keyword Tab Content -->
+                <div id="keyword-search-tab" class="keyword-tab-content">
+                    <div class="keyword-search-section">
+                        <div class="info-section">
+                            <div class="info-card">
+                                <h3><i class="fas fa-search"></i> Search Keyword Across Competitors</h3>
+                                <p>Enter a keyword to see how competitors use it. The tool will find the keyword and its variations 
+                                (e.g., "longhorn" will find "longhorn steakhouse", "longhorn menu", etc.) across all competitor pages.</p>
+                            </div>
+                            <div class="info-card">
+                                <h3><i class="fas fa-lightbulb"></i> What This Tool Does</h3>
+                                <ul>
+                                    <li><strong>Keyword Variations:</strong> Automatically finds related keyword phrases</li>
+                                    <li><strong>Usage Analysis:</strong> Shows how many times and where competitors use the keyword</li>
+                                    <li><strong>Page Tracking:</strong> Lists all pages containing your keyword</li>
+                                    <li><strong>Context Snippets:</strong> Shows how the keyword is used in context</li>
+                                    <li><strong>Competitor Comparison:</strong> Compare keyword usage across multiple competitors</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <form id="keywordSearchForm" onsubmit="event.preventDefault(); searchKeyword(event); return false;">
+                            <div class="form-group">
+                                <label for="searchKeyword">
+                                    <i class="fas fa-key"></i> Keyword to Search
+                                    <span class="tooltip-icon" title="Enter a keyword to search across competitors. The tool will find variations like 'longhorn steakhouse', 'longhorn menu', etc.">
+                                        <i class="fas fa-question-circle"></i>
+                                    </span>
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="searchKeyword" 
+                                    name="searchKeyword" 
+                                    placeholder="e.g., longhorn, steak, menu, prices" 
+                                    required
+                                >
+                                <small class="help-text">
+                                    <i class="fas fa-info-circle"></i> Enter a keyword and the tool will search for it and its variations across competitor sites.
+                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label for="searchCompetitorUrls">
+                                    <i class="fas fa-users"></i> Competitor URLs (for keyword search)
+                                    <span class="tooltip-icon" title="Enter competitor URLs to search. You can use the same URLs from above or different ones.">
+                                        <i class="fas fa-question-circle"></i>
+                                    </span>
+                                </label>
+                                <textarea 
+                                    id="searchCompetitorUrls" 
+                                    name="searchCompetitorUrls" 
+                                    rows="3"
+                                    placeholder="https://competitor1.com&#10;https://competitor2.com"
+                                    required
+                                ></textarea>
+                                <small class="help-text">
+                                    <i class="fas fa-info-circle"></i> Enter competitor URLs (one per line or comma-separated). 
+                                    The tool will search for your keyword across these sites.
+                                </small>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="keywordSearchBtn" onclick="searchKeyword(event)">
+                                <i class="fas fa-search"></i> Search Keyword
+                            </button>
+                        </form>
+                        <div id="keywordSearchResults" style="display: none; margin-top: 20px;">
+                            <!-- Results will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Progress Section (Shared) -->
+                    <div id="keywordResearchProgress" style="display: none;">
+                        <div class="progress-section">
+                            <div class="progress-header">
+                                <h3><i class="fas fa-cog fa-spin"></i> Analysis in Progress</h3>
+                                <div class="progress-percentage" id="keywordProgressPercent">0%</div>
+                            </div>
+                            
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" id="keywordProgressFill" style="width: 0%"></div>
+                            </div>
+                            
+                            <div class="progress-info">
+                                <p id="keywordProgressText" class="progress-text">
+                                    <i class="fas fa-info-circle"></i> Starting analysis...
+                                </p>
+                                <p id="keywordProgressDetail" class="progress-detail">
+                                    Initializing keyword research analyzer...
+                                </p>
+                            </div>
+                            
+                            <div class="progress-stages">
+                                <div class="stage-item" id="stage-your-site">
+                                    <i class="fas fa-circle"></i>
+                                    <span>Crawling Your Website</span>
+                                </div>
+                                <div class="stage-item" id="stage-competitors">
+                                    <i class="fas fa-circle"></i>
+                                    <span>Crawling Competitors</span>
+                                    <span class="stage-count" id="competitor-count">0/0</span>
+                                </div>
+                                <div class="stage-item" id="stage-keywords">
+                                    <i class="fas fa-circle"></i>
+                                    <span>Extracting Keywords</span>
+                                </div>
+                                <div class="stage-item" id="stage-analysis">
+                                    <i class="fas fa-circle"></i>
+                                    <span>Analyzing Data</span>
+                                </div>
+                                <div class="stage-item" id="stage-complete">
+                                    <i class="fas fa-circle"></i>
+                                    <span>Generating Report</span>
+                                </div>
+                            </div>
+                            
+                            <div class="progress-log" id="keywordProgressLog">
+                                <div class="progress-log-header"><strong>Activity Log:</strong></div>
+                                <div class="progress-log-item">
+                                    <span class="log-time">--:--:--</span>
+                                    <span class="log-message">Initializing...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Results Section -->
+                    <div id="keywordResearchResults" style="display: none;">
+                        <!-- Results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
     <div class="container" id="mainContent" style="display: none;">
         <header>
             <h1><i class="fas fa-spider"></i> Website Crawler</h1>
@@ -113,26 +412,15 @@
             <div class="card" id="historyCard" style="display: none;">
                 <div class="section-header">
                     <h2><i class="fas fa-history"></i> Crawl History</h2>
-                    <button class="btn btn-secondary" onclick="hideHistory()">
-                        <i class="fas fa-times"></i> Close
-                    </button>
                 </div>
                 <div id="historyContainer">
                     <p class="loading">Loading crawl history...</p>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card" id="startNewCrawlCard">
                 <div class="section-header">
                     <h2>Start New Crawl</h2>
-                    <div style="margin-bottom: 16px;">
-                        <button class="btn btn-secondary" onclick="showCompetitorAnalyzer()" style="margin-right: 10px;">
-                            <i class="fas fa-balance-scale"></i> Competitor Analyzer
-                        </button>
-                        <button class="btn btn-secondary" onclick="showHistory()">
-                            <i class="fas fa-history"></i> View History
-                        </button>
-                    </div>
                 </div>
                 <form id="crawlForm">
                     <div class="form-group">
@@ -199,21 +487,42 @@
                         <span id="progressMessageText">Initializing...</span>
                     </p>
                     <div class="stats" id="stats" style="display: none;">
-                        <div class="stat-item">
-                            <i class="fas fa-file-alt"></i>
-                            <span>Pages: <strong id="pagesCount">0</strong></span>
+                        <div class="stats-row">
+                            <div class="stat-item">
+                                <i class="fas fa-file-alt"></i>
+                                <span>Pages: <strong id="pagesCount">0</strong></span>
+                                <small id="discoveredPagesInfo" style="display: none;">of <strong id="discoveredPagesCount">0</strong> discovered</small>
+                            </div>
+                            <div class="stat-item">
+                                <i class="fas fa-link"></i>
+                                <span>Total Links: <strong id="linksCount">0</strong></span>
+                            </div>
+                            <div class="stat-item" id="internalLinksItem" style="display: none;">
+                                <i class="fas fa-arrow-right"></i>
+                                <span>Internal: <strong id="internalLinksCount">0</strong></span>
+                            </div>
+                            <div class="stat-item" id="externalLinksItem" style="display: none;">
+                                <i class="fas fa-external-link-alt"></i>
+                                <span>External: <strong id="externalLinksCount">0</strong></span>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <i class="fas fa-link"></i>
-                            <span>Total Links: <strong id="linksCount">0</strong></span>
-                        </div>
-                        <div class="stat-item" id="internalLinksItem" style="display: none;">
-                            <i class="fas fa-arrow-right"></i>
-                            <span>Internal: <strong id="internalLinksCount">0</strong></span>
-                        </div>
-                        <div class="stat-item" id="externalLinksItem" style="display: none;">
-                            <i class="fas fa-external-link-alt"></i>
-                            <span>External: <strong id="externalLinksCount">0</strong></span>
+                        <div class="stats-row stats-row-secondary">
+                            <div class="stat-item">
+                                <i class="fas fa-tachometer-alt"></i>
+                                <span>Speed: <strong id="pagesPerSecond">0</strong> pages/sec</span>
+                            </div>
+                            <div class="stat-item">
+                                <i class="fas fa-link"></i>
+                                <span>Avg Links/Page: <strong id="avgLinksPerPage">0</strong></span>
+                            </div>
+                            <div class="stat-item">
+                                <i class="fas fa-clock"></i>
+                                <span>Elapsed: <strong id="elapsedTime">0s</strong></span>
+                            </div>
+                            <div class="stat-item">
+                                <i class="fas fa-hourglass-half"></i>
+                                <span>Est. Remaining: <strong id="estimatedTimeRemaining">Calculating...</strong></span>
+                            </div>
                         </div>
                     </div>
                     <div id="currentPageInfo" class="current-page-info" style="display: none;">

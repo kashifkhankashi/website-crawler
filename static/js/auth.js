@@ -40,6 +40,7 @@ function showLoginModal() {
     const loginModal = document.getElementById('loginModal');
     const mainContent = document.getElementById('mainContent');
     const competitorCard = document.getElementById('competitorCard');
+    const topNavbar = document.getElementById('topNavbar');
     
     if (loginModal) {
         loginModal.style.display = 'flex';
@@ -50,18 +51,38 @@ function showLoginModal() {
     if (competitorCard) {
         competitorCard.style.display = 'none';
     }
+    if (topNavbar) {
+        topNavbar.style.display = 'none';
+    }
 }
 
 // Hide login modal and show main content
 function showMainContent() {
     const loginModal = document.getElementById('loginModal');
     const mainContent = document.getElementById('mainContent');
+    const topNavbar = document.getElementById('topNavbar');
+    const historyCard = document.getElementById('historyCard');
+    const startNewCrawlCard = document.getElementById('startNewCrawlCard');
     
     if (loginModal) {
         loginModal.style.display = 'none';
     }
     if (mainContent) {
         mainContent.style.display = 'block';
+    }
+    if (topNavbar) {
+        topNavbar.style.display = 'block';
+    }
+    if (historyCard) {
+        historyCard.style.display = 'none';
+    }
+    if (startNewCrawlCard) {
+        startNewCrawlCard.style.display = 'block';
+    }
+    
+    // Update active nav item
+    if (typeof updateActiveNavItem === 'function') {
+        updateActiveNavItem('nav-start-crawl');
     }
 }
 

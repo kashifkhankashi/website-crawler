@@ -965,12 +965,16 @@ def update_progress():
     total_internal = sum(len(item.get("internal_links", [])) for item in items)
     total_external = sum(len(item.get("external_links", [])) for item in items)
     
+    # Get discovered URLs from spider stats (if available)
+    discovered_urls = len(items)  # Default to pages_crawled if stats not available
+    
     progress_data = {{
         "pages_crawled": len(items),
         "links_found": len(links),
         "internal_links": total_internal,
         "external_links": total_external,
         "current_page": current_page_url,
+        "discovered_urls": discovered_urls,
         "timestamp": time.time()
     }}
     try:
@@ -979,11 +983,56 @@ def update_progress():
     except:
         pass
 
-# Custom pipeline to track progress
+# Custom pipeline to track progress with spider stats
 class ProgressPipeline:
+    def __init__(self):
+        self.last_update_time = 0
+    
+    def open_spider(self, spider):
+        """Called when spider opens."""
+        self.spider = spider
+    
     def process_item(self, item, spider):
-        update_progress()
+        # Update progress every time an item is processed
+        current_time = time.time()
+        # Update at least every 0.5 seconds to avoid too frequent writes
+        if current_time - self.last_update_time >= 0.5:
+            # Get discovered URLs from spider stats if available
+            discovered_urls = 0
+            if hasattr(spider, 'stats') and 'discovered_urls' in spider.stats:
+                discovered_urls = spider.stats.get('discovered_urls', 0)
+            
+            items = ItemStoragePipeline.get_collected_items()
+            # If discovered_urls not available, use a better estimate
+            if discovered_urls == 0 or discovered_urls < len(items):
+                # Use pages_crawled + some buffer for pages being discovered
+                discovered_urls = max(len(items), len(items) * 1.2)
+            
+            links = ItemStoragePipeline.get_collected_links()
+            
+            # Calculate internal vs external links
+            total_internal = sum(len(item.get("internal_links", [])) for item in items)
+            total_external = sum(len(item.get("external_links", [])) for item in items)
+            current_page_url = item.get("url", "") if item else ""
+            
+            progress_data = {{
+                "pages_crawled": len(items),
+                "links_found": len(links),
+                "internal_links": total_internal,
+                "external_links": total_external,
+                "current_page": current_page_url,
+                "discovered_urls": int(discovered_urls),
+                "timestamp": current_time
+            }}
+            try:
+                with open(r"{progress_file_path.replace(chr(92), chr(92)+chr(92))}", "w") as f:
+                    json.dump(progress_data, f)
+            except:
+                pass
+            self.last_update_time = current_time
         return item
+
+# Note: ProgressPipeline is now defined above in the update_progress section
 
 # Configure and run
 settings = get_project_settings()

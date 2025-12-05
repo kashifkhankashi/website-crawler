@@ -3,15 +3,57 @@
 let socket;
 let currentJobId = null;
 
+// Initialize event listeners when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listener for keyword search form
+    const keywordSearchForm = document.getElementById('keywordSearchForm');
+    if (keywordSearchForm) {
+        keywordSearchForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            searchKeyword(event);
+            return false;
+        });
+    }
+    
+    // Also add click handler to button as backup
+    const keywordSearchBtn = document.getElementById('keywordSearchBtn');
+    if (keywordSearchBtn) {
+        keywordSearchBtn.addEventListener('click', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            searchKeyword(event);
+            return false;
+        });
+    }
+});
+
 // Show crawl history
 async function showHistory() {
     const historyCard = document.getElementById('historyCard');
     const historyContainer = document.getElementById('historyContainer');
+    const mainContent = document.getElementById('mainContent');
+    const competitorCard = document.getElementById('competitorCard');
+    const keywordCard = document.getElementById('keywordResearchCard');
+    const startNewCrawlCard = document.getElementById('startNewCrawlCard');
+    
+    // Hide other sections
+    if (competitorCard) competitorCard.style.display = 'none';
+    if (keywordCard) keywordCard.style.display = 'none';
+    if (startNewCrawlCard) startNewCrawlCard.style.display = 'none';
+    
+    // Show main content and history
+    if (mainContent) {
+        mainContent.style.display = 'block';
+    }
     
     if (!historyCard || !historyContainer) return;
     
     historyCard.style.display = 'block';
     historyContainer.innerHTML = '<p class="loading">Loading crawl history...</p>';
+    
+    // Update active nav item
+    updateActiveNavItem('nav-history');
     
     try {
         const response = await fetch('/api/list-jobs');
@@ -76,25 +118,27 @@ function viewHistoryJob(jobId) {
 function showCompetitorAnalyzer() {
     const competitorCard = document.getElementById('competitorCard');
     const mainContent = document.getElementById('mainContent');
+    const keywordCard = document.getElementById('keywordResearchCard');
+    const historyCard = document.getElementById('historyCard');
     const loginCard = document.getElementById('loginCard');
     
     // Hide other sections
-    if (mainContent) {
-        mainContent.style.display = 'none';
-    }
-    if (loginCard) {
-        loginCard.style.display = 'none';
-    }
+    if (mainContent) mainContent.style.display = 'none';
+    if (keywordCard) keywordCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'none';
+    if (loginCard) loginCard.style.display = 'none';
     
     // Show competitor analyzer
     if (competitorCard) {
         competitorCard.style.display = 'block';
-        // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
         console.error('competitorCard element not found!');
         alert('Competitor Analyzer section not found. Please refresh the page.');
     }
+    
+    // Update active nav item
+    updateActiveNavItem('nav-competitor');
 }
 
 // Hide competitor analyzer
@@ -112,6 +156,1513 @@ function hideCompetitorAnalyzer() {
         mainContent.style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+}
+
+// Show keyword research
+function showKeywordResearch() {
+    const keywordCard = document.getElementById('keywordResearchCard');
+    const mainContent = document.getElementById('mainContent');
+    const competitorCard = document.getElementById('competitorCard');
+    const historyCard = document.getElementById('historyCard');
+    const loginCard = document.getElementById('loginCard');
+    
+    // Hide other sections
+    if (mainContent) mainContent.style.display = 'none';
+    if (competitorCard) competitorCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'none';
+    if (loginCard) loginCard.style.display = 'none';
+    
+    // Show keyword research
+    if (keywordCard) {
+        keywordCard.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        console.error('keywordResearchCard element not found!');
+        alert('Keyword Research section not found. Please refresh the page.');
+    }
+    
+    // Update active nav item
+    updateActiveNavItem('nav-keyword');
+}
+
+// Switch between Keyword Research tabs
+function switchKeywordTab(tabName) {
+    // Remove active class from all tabs
+    document.querySelectorAll('.keyword-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Hide all tab contents
+    document.querySelectorAll('.keyword-tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const selectedTab = document.getElementById(`tab-${tabName}`);
+    const selectedContent = document.getElementById(`keyword-${tabName}-tab`);
+    
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+    
+    if (selectedContent) {
+        selectedContent.classList.add('active');
+        // Smooth scroll to top of tab content
+        setTimeout(() => {
+            selectedContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    }
+}
+
+// Show main content (Start New Crawl) - Navigation function
+function showMainContentNav() {
+    const mainContent = document.getElementById('mainContent');
+    const competitorCard = document.getElementById('competitorCard');
+    const keywordCard = document.getElementById('keywordResearchCard');
+    const historyCard = document.getElementById('historyCard');
+    const startNewCrawlCard = document.getElementById('startNewCrawlCard');
+    
+    // Hide other sections
+    if (competitorCard) competitorCard.style.display = 'none';
+    if (keywordCard) keywordCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'none';
+    
+    // Show main content and Start New Crawl card
+    if (mainContent) {
+        mainContent.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    if (startNewCrawlCard) startNewCrawlCard.style.display = 'block';
+    
+    // Update active nav item
+    updateActiveNavItem('nav-start-crawl');
+}
+
+// Hide keyword research
+function hideKeywordResearch() {
+    const keywordCard = document.getElementById('keywordResearchCard');
+    const mainContent = document.getElementById('mainContent');
+    
+    // Hide keyword research
+    if (keywordCard) {
+        keywordCard.style.display = 'none';
+    }
+    
+    // Show main content
+    if (mainContent) {
+        mainContent.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    // Update active nav item
+    updateActiveNavItem('nav-start-crawl');
+}
+
+// Update active navigation item
+function updateActiveNavItem(activeId) {
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    const activeItem = document.getElementById(activeId);
+    if (activeItem) {
+        activeItem.classList.add('active');
+    }
+}
+
+// Start keyword research
+async function startKeywordResearch(event) {
+    event.preventDefault();
+    
+    const domain = document.getElementById('yourDomain').value.trim();
+    const competitorsText = document.getElementById('competitorUrls').value.trim();
+    const researchBtn = document.getElementById('keywordResearchBtn');
+    const progressDiv = document.getElementById('keywordResearchProgress');
+    const resultsDiv = document.getElementById('keywordResearchResults');
+    
+    if (!domain || !competitorsText) {
+        alert('Please enter your domain and at least one competitor URL');
+        return;
+    }
+    
+    // Show progress, hide results
+    progressDiv.style.display = 'block';
+    resultsDiv.style.display = 'none';
+    researchBtn.disabled = true;
+    researchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting Analysis...';
+    
+    // Initialize progress display
+    updateKeywordProgress(0, 'Initializing analysis...', 'Preparing to analyze your website and competitors');
+    
+    try {
+        // Start analysis (returns job_id)
+        const response = await fetch('/api/keyword-research', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                domain: domain,
+                competitors: competitorsText
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Keyword research failed');
+        }
+        
+        const startData = await response.json();
+        const jobId = startData.job_id;
+        
+        if (!jobId) {
+            throw new Error('Failed to start analysis');
+        }
+        
+        // Start polling for progress
+        pollKeywordResearchProgress(jobId, progressDiv, resultsDiv, researchBtn);
+        
+    } catch (error) {
+        console.error('Error in keyword research:', error);
+        alert('Error: ' + error.message);
+        progressDiv.style.display = 'none';
+        researchBtn.disabled = false;
+        researchBtn.innerHTML = '<i class="fas fa-search"></i> Start Keyword Research';
+    }
+}
+
+// Poll for keyword research progress
+async function pollKeywordResearchProgress(jobId, progressDiv, resultsDiv, researchBtn) {
+    let pollCount = 0;
+    const maxPolls = 600; // 10 minutes max (600 * 1 second)
+    
+    const pollInterval = setInterval(async () => {
+        pollCount++;
+        
+        try {
+            const response = await fetch(`/api/keyword-research-status/${jobId}`);
+            
+            if (!response.ok) {
+                if (response.status === 404) {
+                    clearInterval(pollInterval);
+                    showKeywordError('Analysis job not found. Please try again.');
+                    resetKeywordResearchButton(researchBtn);
+                    return;
+                }
+                throw new Error('Failed to get progress');
+            }
+            
+            const progressData = await response.json();
+            
+            // Update progress display
+            updateKeywordProgressDisplay(progressData, progressDiv);
+            
+            // Check if completed
+            if (progressData.status === 'completed') {
+                clearInterval(pollInterval);
+                
+                // Get full results
+                try {
+                    const resultsResponse = await fetch(`/api/keyword-research-results/${jobId}`);
+                    if (!resultsResponse.ok) {
+                        throw new Error('Failed to get results');
+                    }
+                    
+                    const results = await resultsResponse.json();
+                    
+                    // Show completion
+                    updateKeywordProgress(100, 'Analysis complete!', 'All data processed successfully');
+                    
+                    // Display results after a short delay
+                    setTimeout(() => {
+                        displayKeywordResearchResults(results);
+                        progressDiv.style.display = 'none';
+                        resultsDiv.style.display = 'block';
+                        resetKeywordResearchButton(researchBtn);
+                    }, 1000);
+                    
+                } catch (error) {
+                    console.error('Error fetching results:', error);
+                    showKeywordError('Analysis completed but failed to load results. Please try again.');
+                    resetKeywordResearchButton(researchBtn);
+                }
+                
+            } else if (progressData.status === 'error') {
+                clearInterval(pollInterval);
+                showKeywordError(progressData.error || 'Analysis failed');
+                resetKeywordResearchButton(researchBtn);
+            }
+            
+            // Stop polling after max attempts
+            if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+                showKeywordError('Analysis is taking longer than expected. Please check back later or try again.');
+                resetKeywordResearchButton(researchBtn);
+            }
+            
+        } catch (error) {
+            console.error('Error polling progress:', error);
+            if (pollCount >= 10) {
+                clearInterval(pollInterval);
+                showKeywordError('Unable to check analysis status. Please refresh the page.');
+                resetKeywordResearchButton(researchBtn);
+            }
+        }
+    }, 1000); // Poll every 1 second
+}
+
+// Update keyword progress display with detailed information
+function updateKeywordProgressDisplay(progressData, progressDiv) {
+    const progress = progressData.progress || 0;
+    const stage = progressData.stage || 'Processing...';
+    const currentCompetitor = progressData.current_competitor;
+    const competitorIndex = progressData.competitor_index || 0;
+    const totalCompetitors = progressData.total_competitors || 0;
+    const details = progressData.details || [];
+    
+    // Update competitor count
+    if (totalCompetitors > 0) {
+        const currentCount = currentCompetitor ? competitorIndex + 1 : competitorIndex;
+        updateCompetitorCount(currentCount, totalCompetitors);
+    }
+    
+    // Build status message
+    let statusMessage = stage;
+    let detailMessage = '';
+    
+    if (currentCompetitor && totalCompetitors > 0) {
+        statusMessage = `Analyzing Competitor ${competitorIndex + 1}/${totalCompetitors}`;
+        detailMessage = `${currentCompetitor} - ${stage}`;
+    } else {
+        detailMessage = stage;
+    }
+    
+    // Update progress bar and text
+    updateKeywordProgress(progress, statusMessage, detailMessage);
+    
+    // Update detailed progress log
+    const progressLog = document.getElementById('keywordProgressLog');
+    if (progressLog) {
+        // Show last 8 details
+        const recentDetails = details.slice(-8).reverse();
+        let logHtml = '<div class="progress-log-header"><strong><i class="fas fa-list"></i> Activity Log:</strong></div>';
+        
+        if (recentDetails.length > 0) {
+            recentDetails.forEach(detail => {
+                const time = new Date(detail.time).toLocaleTimeString();
+                logHtml += `<div class="progress-log-item">
+                    <span class="log-time">${time}</span>
+                    <span class="log-message">${detail.message}</span>
+                </div>`;
+            });
+        } else {
+            logHtml += `<div class="progress-log-item">
+                <span class="log-time">--:--:--</span>
+                <span class="log-message">Waiting for updates...</span>
+            </div>`;
+        }
+        
+        progressLog.innerHTML = logHtml;
+    }
+}
+
+// Show keyword research error
+function showKeywordError(message) {
+    const progressDiv = document.getElementById('keywordResearchProgress');
+    if (progressDiv) {
+        const errorHtml = `
+            <div class="progress-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Error:</strong> ${message}
+            </div>
+        `;
+        progressDiv.innerHTML = errorHtml;
+    }
+}
+
+// Reset keyword research button
+function resetKeywordResearchButton(btn) {
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-search"></i> Start Keyword Research';
+    }
+}
+
+// Update keyword research progress
+function updateKeywordProgress(percent, message, detailMessage = '') {
+    const progressFill = document.getElementById('keywordProgressFill');
+    const progressText = document.getElementById('keywordProgressText');
+    const progressDetail = document.getElementById('keywordProgressDetail');
+    const progressPercent = document.getElementById('keywordProgressPercent');
+    const progressLog = document.getElementById('keywordProgressLog');
+    
+    // Update progress bar
+    if (progressFill) {
+        progressFill.style.width = percent + '%';
+    }
+    
+    // Update percentage
+    if (progressPercent) {
+        progressPercent.textContent = Math.round(percent) + '%';
+    }
+    
+    // Update main message
+    if (progressText) {
+        progressText.innerHTML = `<i class="fas fa-info-circle"></i> ${message}`;
+    }
+    
+    // Update detail message
+    if (progressDetail) {
+        progressDetail.textContent = detailMessage || '';
+    }
+    
+    // Update stage indicators based on progress
+    updateProgressStages(percent);
+}
+
+// Update progress stage indicators
+function updateProgressStages(percent) {
+    // Your site crawling (0-10%)
+    const stageYourSite = document.getElementById('stage-your-site');
+    if (stageYourSite) {
+        if (percent >= 10) {
+            stageYourSite.classList.add('completed');
+            stageYourSite.querySelector('i').className = 'fas fa-check-circle';
+        } else if (percent > 0) {
+            stageYourSite.classList.add('active');
+            stageYourSite.querySelector('i').className = 'fas fa-spinner fa-spin';
+        }
+    }
+    
+    // Competitors crawling (10-40%)
+    const stageCompetitors = document.getElementById('stage-competitors');
+    if (stageCompetitors) {
+        if (percent >= 40) {
+            stageCompetitors.classList.add('completed');
+            stageCompetitors.querySelector('i').className = 'fas fa-check-circle';
+        } else if (percent >= 10) {
+            stageCompetitors.classList.add('active');
+            stageCompetitors.querySelector('i').className = 'fas fa-spinner fa-spin';
+        }
+    }
+    
+    // Keywords extraction (50-70%)
+    const stageKeywords = document.getElementById('stage-keywords');
+    if (stageKeywords) {
+        if (percent >= 70) {
+            stageKeywords.classList.add('completed');
+            stageKeywords.querySelector('i').className = 'fas fa-check-circle';
+        } else if (percent >= 50) {
+            stageKeywords.classList.add('active');
+            stageKeywords.querySelector('i').className = 'fas fa-spinner fa-spin';
+        }
+    }
+    
+    // Analysis (70-95%)
+    const stageAnalysis = document.getElementById('stage-analysis');
+    if (stageAnalysis) {
+        if (percent >= 95) {
+            stageAnalysis.classList.add('completed');
+            stageAnalysis.querySelector('i').className = 'fas fa-check-circle';
+        } else if (percent >= 70) {
+            stageAnalysis.classList.add('active');
+            stageAnalysis.querySelector('i').className = 'fas fa-spinner fa-spin';
+        }
+    }
+    
+    // Complete (95-100%)
+    const stageComplete = document.getElementById('stage-complete');
+    if (stageComplete) {
+        if (percent >= 100) {
+            stageComplete.classList.add('completed');
+            stageComplete.querySelector('i').className = 'fas fa-check-circle';
+        } else if (percent >= 95) {
+            stageComplete.classList.add('active');
+            stageComplete.querySelector('i').className = 'fas fa-spinner fa-spin';
+        }
+    }
+}
+
+// Update competitor count in progress
+function updateCompetitorCount(current, total) {
+    const competitorCount = document.getElementById('competitor-count');
+    if (competitorCount) {
+        competitorCount.textContent = `${current}/${total}`;
+    }
+}
+
+// Display keyword research results
+function displayKeywordResearchResults(data) {
+    const resultsDiv = document.getElementById('keywordResearchResults');
+    if (!resultsDiv) return;
+    
+    const stats = data.statistics || {};
+    const competitors = data.competitors || [];
+    const perCompetitorData = data.per_competitor_data || {};
+    
+    let html = `
+        <div class="keyword-research-results">
+            <div class="keyword-research-header">
+                <h3><i class="fas fa-chart-line"></i> Keyword Research Analysis Complete</h3>
+                <p class="analysis-date">
+                    <i class="fas fa-calendar"></i> Analysis Date: ${data.analysis_date || 'N/A'} | 
+                    <i class="fas fa-clock"></i> Analysis Time: ${stats.analysis_time || 0}s | 
+                    <i class="fas fa-users"></i> Competitors Analyzed: ${stats.competitor_count || 0}
+                </p>
+            </div>
+            
+            <!-- Overview Section -->
+            <div class="keyword-section overview-section">
+                <h3><i class="fas fa-tachometer-alt"></i> Analysis Overview</h3>
+                <p class="section-description">
+                    This analysis compared your website (<strong>${data.domain || 'N/A'}</strong>) against 
+                    <strong>${stats.competitor_count || 0}</strong> competitor${stats.competitor_count !== 1 ? 's' : ''}. 
+                    Below you'll find aggregated insights and individual competitor breakdowns.
+                </p>
+                
+                <div class="keyword-stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-key"></i></div>
+                        <div class="stat-value">${stats.your_keyword_count || 0}</div>
+                        <div class="stat-label">Your Keywords</div>
+                        <div class="stat-description">Unique keywords found on your website</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-users"></i></div>
+                        <div class="stat-value">${stats.competitor_keyword_count || 0}</div>
+                        <div class="stat-label">Competitor Keywords</div>
+                        <div class="stat-description">Total unique keywords from all competitors</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-gap"></i></div>
+                        <div class="stat-value">${stats.content_gap_count || 0}</div>
+                        <div class="stat-label">Content Gaps</div>
+                        <div class="stat-description">Keywords competitors use that you don't</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-project-diagram"></i></div>
+                        <div class="stat-value">${stats.topic_cluster_count || 0}</div>
+                        <div class="stat-label">Topic Clusters</div>
+                        <div class="stat-description">Related keyword groups identified</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-tag"></i></div>
+                        <div class="stat-value">${stats.entity_count || 0}</div>
+                        <div class="stat-label">Entities Found</div>
+                        <div class="stat-description">Product names, brands, menu items extracted</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="fas fa-question-circle"></i></div>
+                        <div class="stat-value">${stats.faq_count || 0}</div>
+                        <div class="stat-label">FAQ Patterns</div>
+                        <div class="stat-description">Question patterns found in content</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Per-Competitor Breakdown Tabs -->
+            ${competitors.length > 0 && Object.keys(perCompetitorData).length > 0 ? `
+                <div class="keyword-section competitor-breakdown-section">
+                    <h3><i class="fas fa-building"></i> Individual Competitor Analysis</h3>
+                    <p class="section-description">
+                        Click on each competitor tab below to see detailed keyword data, top keywords, and phrases for that specific competitor. 
+                        This helps you understand each competitor's keyword strategy individually.
+                    </p>
+                    
+                    <div class="competitor-tabs">
+                        ${competitors.map((url, index) => {
+                            const compData = perCompetitorData[url] || {};
+                            const domain = compData.domain || url.replace(/^https?:\/\//, '').split('/')[0];
+                            return `
+                                <button class="competitor-tab ${index === 0 ? 'active' : ''}" 
+                                        onclick="showCompetitorData('${url.replace(/'/g, "\\'")}', ${index})">
+                                    <span class="tab-number">${index + 1}</span>
+                                    <span class="tab-domain">${domain}</span>
+                                    <span class="tab-badge">${compData.keyword_count || 0} keywords</span>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                    
+                    ${competitors.map((url, index) => {
+                        const compData = perCompetitorData[url] || {};
+                        return `
+                            <div class="competitor-data-panel" id="competitor-panel-${index}" style="display: ${index === 0 ? 'block' : 'none'}">
+                                <div class="competitor-panel-header">
+                                    <h4><i class="fas fa-globe"></i> ${compData.domain || url}</h4>
+                                    <div class="competitor-stats">
+                                        <span><i class="fas fa-file-alt"></i> ${compData.pages_crawled || 0} pages crawled</span>
+                                        <span><i class="fas fa-key"></i> ${compData.keyword_count || 0} keywords</span>
+                                        <span><i class="fas fa-quote-left"></i> ${compData.phrase_count || 0} phrases</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="competitor-keywords-grid">
+                                    <div class="comp-keywords-column">
+                                        <h5><i class="fas fa-list"></i> Top Keywords</h5>
+                                        <p class="column-description">Most frequently used keywords on this competitor's website</p>
+                                        <div class="comp-keyword-list">
+                                            ${(compData.keywords || []).slice(0, 30).map((kw, idx) => `
+                                                <div class="comp-keyword-item">
+                                                    <span class="comp-kw-rank">#${idx + 1}</span>
+                                                    <span class="comp-kw-text">${kw}</span>
+                                                    ${compData.top_keywords && compData.top_keywords[kw] ? 
+                                                        `<span class="comp-kw-freq">${compData.top_keywords[kw]}x</span>` : ''}
+                                                </div>
+                                            `).join('') || '<p class="no-data">No keywords found</p>'}
+                                        </div>
+                                    </div>
+                                    <div class="comp-keywords-column">
+                                        <h5><i class="fas fa-quote-left"></i> Top Phrases</h5>
+                                        <p class="column-description">2-3 word keyword phrases commonly used</p>
+                                        <div class="comp-keyword-list">
+                                            ${(compData.phrases || []).slice(0, 30).map((phrase, idx) => `
+                                                <div class="comp-keyword-item">
+                                                    <span class="comp-kw-rank">#${idx + 1}</span>
+                                                    <span class="comp-kw-text">${phrase}</span>
+                                                </div>
+                                            `).join('') || '<p class="no-data">No phrases found</p>'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : ''}
+            
+            <!-- Keyword Opportunities -->
+            ${data.opportunities && data.opportunities.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-star"></i> Top Keyword Opportunities</h3>
+                    <p class="section-description">
+                        These are keywords and phrases that your competitors are using but you're not. 
+                        Higher scores indicate better opportunities. Focus on keywords with scores above 50 for maximum impact.
+                    </p>
+                    <div class="opportunities-grid">
+                        ${data.opportunities.slice(0, 50).map((opp, index) => `
+                            <div class="opportunity-card">
+                                <div class="opp-header-row">
+                                    <span class="opp-rank">#${index + 1}</span>
+                                    <div class="opp-content">
+                                        <div class="opp-keyword">${opp.keyword}</div>
+                                        <div class="opp-badges">
+                                            <span class="opp-type">${opp.type}</span>
+                                            <span class="opp-score">${Math.round(opp.opportunity_score)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="opp-recommendation">${opp.recommendation}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Content Gaps -->
+            ${data.content_gaps ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Content Gaps Analysis</h3>
+                    <p class="section-description">
+                        Content gaps are keywords and phrases that competitors use frequently but are missing from your website. 
+                        These represent opportunities to create new content or optimize existing pages. 
+                        Frequency shows how often competitors use these terms, and the score indicates the opportunity value.
+                    </p>
+                    <div class="content-gaps-grid">
+                        <div class="gap-column">
+                            <h4>
+                                <i class="fas fa-key"></i> Missing Keywords 
+                                <span class="count-badge">${data.content_gaps.missing_keywords?.length || 0}</span>
+                            </h4>
+                            <p class="column-description">Single keywords competitors use that you don't</p>
+                            <div class="keyword-list">
+                                ${(data.content_gaps.missing_keywords || []).slice(0, 50).map(kw => `
+                                    <div class="keyword-item">
+                                        <span class="keyword-text">${kw.keyword}</span>
+                                        <div class="keyword-metrics">
+                                            <span class="keyword-freq" title="Frequency across competitors">Freq: ${kw.frequency}</span>
+                                            <span class="keyword-score" title="Opportunity score (higher = better)">Score: ${Math.round(kw.opportunity_score)}</span>
+                                        </div>
+                                    </div>
+                                `).join('') || '<p class="no-data">No missing keywords found</p>'}
+                            </div>
+                        </div>
+                        <div class="gap-column">
+                            <h4>
+                                <i class="fas fa-quote-left"></i> Missing Phrases 
+                                <span class="count-badge">${data.content_gaps.missing_phrases?.length || 0}</span>
+                            </h4>
+                            <p class="column-description">2-3 word phrases competitors use that you don't</p>
+                            <div class="keyword-list">
+                                ${(data.content_gaps.missing_phrases || []).slice(0, 50).map(phrase => `
+                                    <div class="keyword-item">
+                                        <span class="keyword-text">${phrase.phrase}</span>
+                                        <div class="keyword-metrics">
+                                            <span class="keyword-freq" title="Frequency across competitors">Freq: ${phrase.frequency}</span>
+                                            <span class="keyword-score" title="Opportunity score (higher = better)">Score: ${Math.round(phrase.opportunity_score)}</span>
+                                        </div>
+                                    </div>
+                                `).join('') || '<p class="no-data">No missing phrases found</p>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Topic Clusters -->
+            ${data.topic_clusters && data.topic_clusters.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-project-diagram"></i> Topic Clusters</h3>
+                    <p class="section-description">
+                        Topic clusters group related keywords together. This shows what main topics your competitors are focusing on. 
+                        Each cluster represents a content theme. Use this to identify content pillars you might want to create.
+                    </p>
+                    <div class="topic-clusters-grid">
+                        ${data.topic_clusters.slice(0, 30).map(cluster => `
+                            <div class="topic-cluster-card">
+                                <h4>${cluster.topic}</h4>
+                                <p class="cluster-meta">
+                                    <i class="fas fa-key"></i> ${cluster.keyword_count} keywords | 
+                                    <i class="fas fa-star"></i> Relevance: ${cluster.relevance_score}
+                                </p>
+                                <div class="cluster-keywords">
+                                    ${cluster.keywords.slice(0, 15).map(kw => `<span class="cluster-keyword">${kw}</span>`).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Entities -->
+            ${data.entities && data.entities.all_entities && data.entities.all_entities.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-tag"></i> Extracted Entities</h3>
+                    <p class="section-description">
+                        Entities are specific named items like product names, menu items, brand names, locations, or events. 
+                        These are extracted using NLP techniques. Use this to see what specific products or services competitors mention.
+                    </p>
+                    <div class="entities-list">
+                        ${data.entities.all_entities.slice(0, 100).map(entity => `
+                            <span class="entity-tag" title="Entity extracted from content">${entity}</span>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- FAQ Patterns -->
+            ${data.faq_patterns && data.faq_patterns.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-question-circle"></i> FAQ Patterns</h3>
+                    <p class="section-description">
+                        These are questions found in competitor content. Use these to create FAQ sections or answer content. 
+                        Questions are categorized by type (what, how, why, when, where, who).
+                    </p>
+                    <div class="faq-list">
+                        ${data.faq_patterns.slice(0, 50).map(faq => `
+                            <div class="faq-item">
+                                <span class="faq-type">${faq.type}</span>
+                                <p class="faq-question">${faq.question}</p>
+                                <small class="faq-source">Source: <a href="${faq.source}" target="_blank">${faq.source}</a></small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Keyword Difficulty Analysis -->
+            ${data.keyword_difficulty ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-chart-line"></i> Keyword Difficulty Analysis</h3>
+                    <p class="section-description">
+                        Keyword difficulty measures how competitive a keyword is based on how many competitors use it and how frequently. 
+                        Easy keywords (< 30) are less competitive and easier to rank for. Hard keywords (≥ 70) are highly competitive.
+                    </p>
+                    <div class="difficulty-tabs">
+                        <button class="difficulty-tab active" onclick="showDifficultyTab('easy')">
+                            <i class="fas fa-check-circle"></i> Easy Keywords 
+                            <span class="count-badge">${data.keyword_difficulty.easy_keywords?.length || 0}</span>
+                        </button>
+                        <button class="difficulty-tab" onclick="showDifficultyTab('medium')">
+                            <i class="fas fa-exclamation-circle"></i> Medium Keywords 
+                            <span class="count-badge">${data.keyword_difficulty.medium_keywords?.length || 0}</span>
+                        </button>
+                        <button class="difficulty-tab" onclick="showDifficultyTab('hard')">
+                            <i class="fas fa-times-circle"></i> Hard Keywords 
+                            <span class="count-badge">${data.keyword_difficulty.hard_keywords?.length || 0}</span>
+                        </button>
+                    </div>
+                    <div id="difficulty-easy" class="difficulty-content active">
+                        <div class="difficulty-grid">
+                            ${(data.keyword_difficulty.easy_keywords || []).map(kw => `
+                                <div class="difficulty-card easy">
+                                    <div class="difficulty-header">
+                                        <span class="difficulty-keyword">${kw.keyword}</span>
+                                        <span class="difficulty-badge easy">Easy</span>
+                                    </div>
+                                    <div class="difficulty-metrics">
+                                        <span><i class="fas fa-users"></i> Competitors: ${kw.competitor_count}</span>
+                                        <span><i class="fas fa-chart-bar"></i> Frequency: ${kw.total_frequency}</span>
+                                        <span><i class="fas fa-percentage"></i> Difficulty: ${kw.difficulty}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div id="difficulty-medium" class="difficulty-content">
+                        <div class="difficulty-grid">
+                            ${(data.keyword_difficulty.medium_keywords || []).map(kw => `
+                                <div class="difficulty-card medium">
+                                    <div class="difficulty-header">
+                                        <span class="difficulty-keyword">${kw.keyword}</span>
+                                        <span class="difficulty-badge medium">Medium</span>
+                                    </div>
+                                    <div class="difficulty-metrics">
+                                        <span><i class="fas fa-users"></i> Competitors: ${kw.competitor_count}</span>
+                                        <span><i class="fas fa-chart-bar"></i> Frequency: ${kw.total_frequency}</span>
+                                        <span><i class="fas fa-percentage"></i> Difficulty: ${kw.difficulty}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div id="difficulty-hard" class="difficulty-content">
+                        <div class="difficulty-grid">
+                            ${(data.keyword_difficulty.hard_keywords || []).map(kw => `
+                                <div class="difficulty-card hard">
+                                    <div class="difficulty-header">
+                                        <span class="difficulty-keyword">${kw.keyword}</span>
+                                        <span class="difficulty-badge hard">Hard</span>
+                                    </div>
+                                    <div class="difficulty-metrics">
+                                        <span><i class="fas fa-users"></i> Competitors: ${kw.competitor_count}</span>
+                                        <span><i class="fas fa-chart-bar"></i> Frequency: ${kw.total_frequency}</span>
+                                        <span><i class="fas fa-percentage"></i> Difficulty: ${kw.difficulty}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Keyword Intent Analysis -->
+            ${data.keyword_intent ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-bullseye"></i> Keyword Intent Classification</h3>
+                    <p class="section-description">
+                        Keywords are classified by search intent: <strong>Informational</strong> (seeking information), 
+                        <strong>Transactional</strong> (ready to buy), <strong>Commercial</strong> (comparing options), 
+                        and <strong>Navigational</strong> (looking for specific site). This helps you create content that matches user intent.
+                    </p>
+                    <div class="intent-grid">
+                        <div class="intent-column informational">
+                            <h4><i class="fas fa-info-circle"></i> Informational <span class="count-badge">${data.keyword_intent.informational?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.informational || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="intent-column transactional">
+                            <h4><i class="fas fa-shopping-cart"></i> Transactional <span class="count-badge">${data.keyword_intent.transactional?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.transactional || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="intent-column commercial">
+                            <h4><i class="fas fa-balance-scale"></i> Commercial <span class="count-badge">${data.keyword_intent.commercial?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.commercial || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="intent-column navigational">
+                            <h4><i class="fas fa-compass"></i> Navigational <span class="count-badge">${data.keyword_intent.navigational?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.navigational || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Long-Tail Keywords -->
+            ${data.long_tail_keywords && data.long_tail_keywords.keywords?.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-stream"></i> Long-Tail Keywords (4+ Words)</h3>
+                    <p class="section-description">
+                        Long-tail keywords are longer, more specific phrases (4+ words) that are less competitive and often have higher conversion rates. 
+                        These are great for targeting niche audiences and specific search queries.
+                    </p>
+                    <div class="long-tail-grid">
+                        ${data.long_tail_keywords.keywords.slice(0, 50).map(kw => `
+                            <div class="long-tail-card">
+                                <div class="long-tail-keyword">${kw.keyword}</div>
+                                <div class="long-tail-freq"><i class="fas fa-chart-line"></i> Frequency: ${kw.frequency}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- LSI Keywords -->
+            ${data.lsi_keywords && data.lsi_keywords.keyword_groups?.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-sitemap"></i> LSI (Latent Semantic Indexing) Keywords</h3>
+                    <p class="section-description">
+                        LSI keywords are semantically related terms that search engines use to understand content context. 
+                        Using these related keywords helps improve your content's relevance and SEO performance.
+                    </p>
+                    <div class="lsi-grid">
+                        ${data.lsi_keywords.keyword_groups.slice(0, 20).map(group => `
+                            <div class="lsi-card">
+                                <h4 class="lsi-main">${group.main_keyword}</h4>
+                                <div class="lsi-related">
+                                    <strong>Related Keywords:</strong>
+                                    <div class="lsi-keywords">
+                                        ${group.related_keywords.slice(0, 8).map(rel => `
+                                            <span class="lsi-keyword" title="Similarity: ${rel.similarity}%">
+                                                ${rel.keyword} <span class="lsi-sim">${rel.similarity}%</span>
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Keyword Variations -->
+            ${data.keyword_variations && data.keyword_variations.variations?.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-exchange-alt"></i> Keyword Variations & Synonyms</h3>
+                    <p class="section-description">
+                        These are variations of keywords (plural/singular forms, different word order, synonyms) that competitors use. 
+                        Including these variations in your content helps cover more search queries.
+                    </p>
+                    <div class="variations-grid">
+                        ${data.keyword_variations.variations.slice(0, 30).map(var_item => `
+                            <div class="variation-card">
+                                <div class="variation-base"><strong>Base:</strong> ${var_item.base_keyword}</div>
+                                <div class="variation-list">
+                                    <strong>Variations:</strong>
+                                    ${var_item.variations.map(v => `<span class="variation-item">${v}</span>`).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Content Suggestions -->
+            ${data.content_suggestions && data.content_suggestions.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-lightbulb"></i> AI-Powered Content Suggestions</h3>
+                    <p class="section-description">
+                        Based on keyword opportunities, content gaps, and competitor analysis, here are specific content ideas you should create. 
+                        Each suggestion includes the target keywords and estimated value.
+                    </p>
+                    <div class="suggestions-grid">
+                        ${data.content_suggestions.map((suggestion, idx) => `
+                            <div class="suggestion-card ${suggestion.priority}">
+                                <div class="suggestion-header">
+                                    <h4>${suggestion.title}</h4>
+                                    <span class="suggestion-type">${suggestion.type.replace('_', ' ')}</span>
+                                </div>
+                                <div class="suggestion-priority">
+                                    <i class="fas fa-${suggestion.priority === 'high' ? 'exclamation-triangle' : 'info-circle'}"></i>
+                                    Priority: <strong>${suggestion.priority.toUpperCase()}</strong>
+                                </div>
+                                <p class="suggestion-text">${suggestion.suggestion}</p>
+                                <div class="suggestion-keywords">
+                                    <strong>Target Keywords:</strong>
+                                    ${suggestion.keywords.map(kw => `<span class="suggestion-kw">${kw}</span>`).join('')}
+                                </div>
+                                <div class="suggestion-value">
+                                    <i class="fas fa-star"></i> Estimated Value: <strong>${suggestion.estimated_value}</strong>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- SERP Opportunities -->
+            ${data.serp_opportunities ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-trophy"></i> SERP Feature Opportunities</h3>
+                    <p class="section-description">
+                        SERP (Search Engine Results Page) features like Featured Snippets, People Also Ask, and Related Searches can significantly 
+                        increase your visibility. Here are opportunities to target these features.
+                    </p>
+                    <div class="serp-grid">
+                        <div class="serp-column">
+                            <h4><i class="fas fa-star"></i> Featured Snippet Opportunities</h4>
+                            <div class="serp-list">
+                                ${(data.serp_opportunities.featured_snippet || []).slice(0, 15).map(item => `
+                                    <div class="serp-item">
+                                        <div class="serp-keyword">${item.keyword}</div>
+                                        <div class="serp-opportunity">${item.opportunity}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="serp-column">
+                            <h4><i class="fas fa-question"></i> People Also Ask</h4>
+                            <div class="serp-list">
+                                ${(data.serp_opportunities.people_also_ask || []).slice(0, 15).map(item => `
+                                    <div class="serp-item">
+                                        <div class="serp-keyword">${item.keyword}</div>
+                                        <div class="serp-opportunity">${item.opportunity}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="serp-column">
+                            <h4><i class="fas fa-search"></i> Related Searches</h4>
+                            <div class="serp-list">
+                                ${(data.serp_opportunities.related_searches || []).slice(0, 10).map(item => `
+                                    <div class="serp-item">
+                                        <div class="serp-keyword">${item.main_keyword}</div>
+                                        <div class="serp-related">
+                                            ${item.related.map(r => `<span class="serp-related-kw">${r}</span>`).join('')}
+                                        </div>
+                                        <div class="serp-opportunity">${item.opportunity}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Keyword Difficulty Analysis -->
+            ${data.keyword_difficulty ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-chart-line"></i> Keyword Difficulty Analysis</h3>
+                    <p class="section-description">
+                        Keyword difficulty measures how competitive a keyword is based on how many competitors use it and how frequently. 
+                        Easy keywords (< 30) are less competitive and easier to rank for. Hard keywords (≥ 70) are highly competitive.
+                    </p>
+                    <div class="difficulty-tabs">
+                        <button class="difficulty-tab active" onclick="showDifficultyTab('easy')">
+                            <i class="fas fa-check-circle"></i> Easy Keywords 
+                            <span class="count-badge">${data.keyword_difficulty.easy_keywords?.length || 0}</span>
+                        </button>
+                        <button class="difficulty-tab" onclick="showDifficultyTab('medium')">
+                            <i class="fas fa-exclamation-circle"></i> Medium Keywords 
+                            <span class="count-badge">${data.keyword_difficulty.medium_keywords?.length || 0}</span>
+                        </button>
+                        <button class="difficulty-tab" onclick="showDifficultyTab('hard')">
+                            <i class="fas fa-times-circle"></i> Hard Keywords 
+                            <span class="count-badge">${data.keyword_difficulty.hard_keywords?.length || 0}</span>
+                        </button>
+                    </div>
+                    <div id="difficulty-easy" class="difficulty-content active">
+                        <div class="difficulty-grid">
+                            ${(data.keyword_difficulty.easy_keywords || []).map(kw => `
+                                <div class="difficulty-card easy">
+                                    <div class="difficulty-header">
+                                        <span class="difficulty-keyword">${kw.keyword}</span>
+                                        <span class="difficulty-badge easy">Easy</span>
+                                    </div>
+                                    <div class="difficulty-metrics">
+                                        <span><i class="fas fa-users"></i> Competitors: ${kw.competitor_count}</span>
+                                        <span><i class="fas fa-chart-bar"></i> Frequency: ${kw.total_frequency}</span>
+                                        <span><i class="fas fa-percentage"></i> Difficulty: ${kw.difficulty}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div id="difficulty-medium" class="difficulty-content">
+                        <div class="difficulty-grid">
+                            ${(data.keyword_difficulty.medium_keywords || []).map(kw => `
+                                <div class="difficulty-card medium">
+                                    <div class="difficulty-header">
+                                        <span class="difficulty-keyword">${kw.keyword}</span>
+                                        <span class="difficulty-badge medium">Medium</span>
+                                    </div>
+                                    <div class="difficulty-metrics">
+                                        <span><i class="fas fa-users"></i> Competitors: ${kw.competitor_count}</span>
+                                        <span><i class="fas fa-chart-bar"></i> Frequency: ${kw.total_frequency}</span>
+                                        <span><i class="fas fa-percentage"></i> Difficulty: ${kw.difficulty}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div id="difficulty-hard" class="difficulty-content">
+                        <div class="difficulty-grid">
+                            ${(data.keyword_difficulty.hard_keywords || []).map(kw => `
+                                <div class="difficulty-card hard">
+                                    <div class="difficulty-header">
+                                        <span class="difficulty-keyword">${kw.keyword}</span>
+                                        <span class="difficulty-badge hard">Hard</span>
+                                    </div>
+                                    <div class="difficulty-metrics">
+                                        <span><i class="fas fa-users"></i> Competitors: ${kw.competitor_count}</span>
+                                        <span><i class="fas fa-chart-bar"></i> Frequency: ${kw.total_frequency}</span>
+                                        <span><i class="fas fa-percentage"></i> Difficulty: ${kw.difficulty}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Keyword Intent Analysis -->
+            ${data.keyword_intent ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-bullseye"></i> Keyword Intent Classification</h3>
+                    <p class="section-description">
+                        Keywords are classified by search intent: <strong>Informational</strong> (seeking information), 
+                        <strong>Transactional</strong> (ready to buy), <strong>Commercial</strong> (comparing options), 
+                        and <strong>Navigational</strong> (looking for specific site). This helps you create content that matches user intent.
+                    </p>
+                    <div class="intent-grid">
+                        <div class="intent-column informational">
+                            <h4><i class="fas fa-info-circle"></i> Informational <span class="count-badge">${data.keyword_intent.informational?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.informational || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="intent-column transactional">
+                            <h4><i class="fas fa-shopping-cart"></i> Transactional <span class="count-badge">${data.keyword_intent.transactional?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.transactional || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="intent-column commercial">
+                            <h4><i class="fas fa-balance-scale"></i> Commercial <span class="count-badge">${data.keyword_intent.commercial?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.commercial || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="intent-column navigational">
+                            <h4><i class="fas fa-compass"></i> Navigational <span class="count-badge">${data.keyword_intent.navigational?.length || 0}</span></h4>
+                            <div class="intent-keywords">
+                                ${(data.keyword_intent.navigational || []).slice(0, 30).map(kw => `
+                                    <span class="intent-keyword" title="${kw.keyword}">${kw.keyword}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Long-Tail Keywords -->
+            ${data.long_tail_keywords && data.long_tail_keywords.keywords?.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-stream"></i> Long-Tail Keywords (4+ Words)</h3>
+                    <p class="section-description">
+                        Long-tail keywords are longer, more specific phrases (4+ words) that are less competitive and often have higher conversion rates. 
+                        These are great for targeting niche audiences and specific search queries.
+                    </p>
+                    <div class="long-tail-grid">
+                        ${data.long_tail_keywords.keywords.slice(0, 50).map(kw => `
+                            <div class="long-tail-card">
+                                <div class="long-tail-keyword">${kw.keyword}</div>
+                                <div class="long-tail-freq"><i class="fas fa-chart-line"></i> Frequency: ${kw.frequency}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- LSI Keywords -->
+            ${data.lsi_keywords && data.lsi_keywords.keyword_groups?.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-sitemap"></i> LSI (Latent Semantic Indexing) Keywords</h3>
+                    <p class="section-description">
+                        LSI keywords are semantically related terms that search engines use to understand content context. 
+                        Using these related keywords helps improve your content's relevance and SEO performance.
+                    </p>
+                    <div class="lsi-grid">
+                        ${data.lsi_keywords.keyword_groups.slice(0, 20).map(group => `
+                            <div class="lsi-card">
+                                <h4 class="lsi-main">${group.main_keyword}</h4>
+                                <div class="lsi-related">
+                                    <strong>Related Keywords:</strong>
+                                    <div class="lsi-keywords">
+                                        ${group.related_keywords.slice(0, 8).map(rel => `
+                                            <span class="lsi-keyword" title="Similarity: ${rel.similarity}%">
+                                                ${rel.keyword} <span class="lsi-sim">${rel.similarity}%</span>
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Content Suggestions -->
+            ${data.content_suggestions && data.content_suggestions.length > 0 ? `
+                <div class="keyword-section">
+                    <h3><i class="fas fa-lightbulb"></i> AI-Powered Content Suggestions</h3>
+                    <p class="section-description">
+                        Based on keyword opportunities, content gaps, and competitor analysis, here are specific content ideas you should create. 
+                        Each suggestion includes the target keywords and estimated value.
+                    </p>
+                    <div class="suggestions-grid">
+                        ${data.content_suggestions.map((suggestion, idx) => `
+                            <div class="suggestion-card ${suggestion.priority}">
+                                <div class="suggestion-header">
+                                    <h4>${suggestion.title}</h4>
+                                    <span class="suggestion-type">${suggestion.type.replace('_', ' ')}</span>
+                                </div>
+                                <div class="suggestion-priority">
+                                    <i class="fas fa-${suggestion.priority === 'high' ? 'exclamation-triangle' : 'info-circle'}"></i>
+                                    Priority: <strong>${suggestion.priority.toUpperCase()}</strong>
+                                </div>
+                                <p class="suggestion-text">${suggestion.suggestion}</p>
+                                <div class="suggestion-keywords">
+                                    <strong>Target Keywords:</strong>
+                                    ${suggestion.keywords.map(kw => `<span class="suggestion-kw">${kw}</span>`).join('')}
+                                </div>
+                                <div class="suggestion-value">
+                                    <i class="fas fa-star"></i> Estimated Value: <strong>${suggestion.estimated_value}</strong>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Export Section -->
+            <div class="keyword-section export-section">
+                <h3><i class="fas fa-download"></i> Export Results</h3>
+                <p class="section-description">
+                    Download your analysis results in JSON format for further analysis or reporting.
+                </p>
+                <div class="export-buttons">
+                    <button class="btn btn-secondary" onclick="exportKeywordData('keywords', ${JSON.stringify(data).replace(/"/g, '&quot;')})">
+                        <i class="fas fa-file-code"></i> Export Keywords JSON
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportKeywordData('topics', ${JSON.stringify(data).replace(/"/g, '&quot;')})">
+                        <i class="fas fa-file-code"></i> Export Topics JSON
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportKeywordData('gaps', ${JSON.stringify(data).replace(/"/g, '&quot;')})">
+                        <i class="fas fa-file-code"></i> Export Gaps JSON
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportKeywordData('all', ${JSON.stringify(data).replace(/"/g, '&quot;')})">
+                        <i class="fas fa-file-archive"></i> Export All Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    resultsDiv.innerHTML = html;
+    resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Show competitor data tab
+function showCompetitorData(url, index) {
+    // Hide all panels
+    document.querySelectorAll('.competitor-data-panel').forEach(panel => {
+        panel.style.display = 'none';
+    });
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.competitor-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected panel
+    const panel = document.getElementById(`competitor-panel-${index}`);
+    if (panel) {
+        panel.style.display = 'block';
+    }
+    
+    // Add active class to selected tab
+    const tab = event.target.closest('.competitor-tab');
+    if (tab) {
+        tab.classList.add('active');
+    }
+}
+
+// Search keyword across competitors
+async function searchKeyword(event) {
+    // Prevent form submission and page refresh - CRITICAL
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
+    // Also prevent default if called without event
+    const searchBtn = document.getElementById('keywordSearchBtn');
+    const resultsDiv = document.getElementById('keywordSearchResults');
+    const keywordInput = document.getElementById('searchKeyword');
+    const competitorsInput = document.getElementById('searchCompetitorUrls');
+    
+    if (!searchBtn || !resultsDiv || !keywordInput || !competitorsInput) {
+        console.error('Required elements not found for keyword search');
+        if (event) {
+            event.preventDefault();
+        }
+        return false;
+    }
+    
+    const keyword = keywordInput.value.trim();
+    const competitorsStr = competitorsInput.value.trim();
+    
+    if (!keyword) {
+        alert('Please enter a keyword to search');
+        if (event) {
+            event.preventDefault();
+        }
+        return false;
+    }
+    
+    if (!competitorsStr) {
+        alert('Please enter at least one competitor URL');
+        if (event) {
+            event.preventDefault();
+        }
+        return false;
+    }
+    
+    // Show loading state
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Searching for keyword across competitors...</div>';
+    
+    try {
+        const response = await fetch('/api/keyword-search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                keyword: keyword,
+                competitors: competitorsStr
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Keyword search failed');
+        }
+        
+        // Display results
+        displayKeywordSearchResults(data);
+        
+    } catch (error) {
+        console.error('Error in keyword search:', error);
+        if (resultsDiv) {
+            resultsDiv.innerHTML = `
+                <div class="error-message">
+                    <i class="fas fa-exclamation-circle"></i> 
+                    <strong>Error:</strong> ${error.message || 'Failed to search keyword. Please try again.'}
+                </div>
+            `;
+        }
+    } finally {
+        if (searchBtn) {
+            searchBtn.disabled = false;
+            searchBtn.innerHTML = '<i class="fas fa-search"></i> Search Keyword';
+        }
+    }
+    
+    // Always return false to prevent form submission
+    return false;
+}
+
+// Display keyword search results
+function displayKeywordSearchResults(data) {
+    const resultsDiv = document.getElementById('keywordSearchResults');
+    if (!resultsDiv) return;
+    
+    const keyword = data.keyword || '';
+    const variations = data.variations || [];
+    const competitorData = data.competitor_data || {};
+    const summary = data.summary || {};
+    
+    let html = `
+        <div class="keyword-search-results">
+            <div class="keyword-search-header">
+                <h3><i class="fas fa-search"></i> Keyword Search Results: "${keyword}"</h3>
+                <div class="search-summary">
+                    <div class="summary-stat">
+                        <i class="fas fa-file-alt"></i>
+                        <strong>${data.total_pages || 0}</strong> Pages Found
+                    </div>
+                    <div class="summary-stat">
+                        <i class="fas fa-hashtag"></i>
+                        <strong>${data.total_occurrences || 0}</strong> Total Occurrences
+                    </div>
+                    <div class="summary-stat">
+                        <i class="fas fa-users"></i>
+                        <strong>${summary.competitors_with_keyword || 0}</strong> / ${summary.total_competitors || 0} Competitors
+                    </div>
+                    ${summary.most_used_variation ? `
+                    <div class="summary-stat">
+                        <i class="fas fa-star"></i>
+                        <strong>Most Used:</strong> "${summary.most_used_variation}"
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+            
+            ${variations.length > 0 ? `
+            <div class="keyword-section">
+                <h4><i class="fas fa-list"></i> Keyword Variations Found</h4>
+                <div class="variations-list">
+                    ${variations.map(v => `<span class="variation-tag">${v}</span>`).join('')}
+                </div>
+            </div>
+            ` : ''}
+            
+            <div class="competitor-keyword-results">
+                <h4><i class="fas fa-building"></i> Results by Competitor</h4>
+    `;
+    
+    // Display results for each competitor
+    for (const [competitorUrl, compData] of Object.entries(competitorData)) {
+        if (compData.error) {
+            html += `
+                <div class="competitor-result-card error">
+                    <div class="competitor-header">
+                        <h5><i class="fas fa-exclamation-triangle"></i> ${competitorUrl}</h5>
+                        <span class="error-badge">Error: ${compData.error}</span>
+                    </div>
+                </div>
+            `;
+            continue;
+        }
+        
+        const pages = compData.pages || [];
+        const totalOccurrences = compData.total_occurrences || 0;
+        const pagesWithKeyword = compData.pages_with_keyword || 0;
+        const variationsFound = compData.variations_found || [];
+        
+        html += `
+            <div class="competitor-result-card">
+                <div class="competitor-header">
+                    <h5><i class="fas fa-link"></i> ${competitorUrl}</h5>
+                    <div class="competitor-stats">
+                        <span class="stat-badge"><i class="fas fa-file-alt"></i> ${pagesWithKeyword} Pages</span>
+                        <span class="stat-badge"><i class="fas fa-hashtag"></i> ${totalOccurrences} Occurrences</span>
+                        ${variationsFound.length > 0 ? `<span class="stat-badge"><i class="fas fa-list"></i> ${variationsFound.length} Variations</span>` : ''}
+                    </div>
+                </div>
+        `;
+        
+        if (pages.length > 0) {
+            html += `
+                <div class="pages-list">
+                    <h6><i class="fas fa-file"></i> Pages with "${keyword}" (${pages.length})</h6>
+                    <div class="pages-grid">
+            `;
+            
+            pages.forEach((page, idx) => {
+                const pageVariations = Object.entries(page.variations || {})
+                    .map(([varName, count]) => `<span class="var-badge">${varName} (${count})</span>`)
+                    .join('');
+                
+                html += `
+                    <div class="page-result-card">
+                        <div class="page-header">
+                            <span class="page-rank">#${idx + 1}</span>
+                            <a href="${page.url}" target="_blank" class="page-link">
+                                <i class="fas fa-external-link-alt"></i> ${page.title || page.url}
+                            </a>
+                        </div>
+                        <div class="page-stats">
+                            <span class="occurrence-count"><i class="fas fa-hashtag"></i> ${page.occurrences} occurrences</span>
+                        </div>
+                        ${pageVariations ? `
+                        <div class="page-variations">
+                            <strong>Variations found:</strong>
+                            <div class="variations-inline">${pageVariations}</div>
+                        </div>
+                        ` : ''}
+                        ${page.context && page.context.length > 0 ? `
+                        <div class="page-context">
+                            <strong>Context snippets:</strong>
+                            <ul class="context-list">
+                                ${page.context.slice(0, 3).map(ctx => `<li>"${ctx.substring(0, 150)}${ctx.length > 150 ? '...' : ''}"</li>`).join('')}
+                            </ul>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="no-results">
+                    <i class="fas fa-info-circle"></i> No pages found with "${keyword}" on this competitor site.
+                </div>
+            `;
+        }
+        
+        html += `</div>`; // Close competitor-result-card
+    }
+    
+    html += `
+            </div>
+        </div>
+    `;
+    
+    resultsDiv.innerHTML = html;
+}
+
+// Export keyword data
+function exportKeywordData(type, data) {
+    let content, filename;
+    
+    if (type === 'keywords') {
+        content = JSON.stringify({
+            your_keywords: data.your_keywords,
+            competitor_keywords: data.competitor_keywords,
+            per_competitor_data: data.per_competitor_data
+        }, null, 2);
+        filename = 'keywords.json';
+    } else if (type === 'topics') {
+        content = JSON.stringify({
+            topic_clusters: data.topic_clusters
+        }, null, 2);
+        filename = 'topic_clusters.json';
+    } else if (type === 'gaps') {
+        content = JSON.stringify({
+            content_gaps: data.content_gaps
+        }, null, 2);
+        filename = 'content_gaps.json';
+    } else if (type === 'all') {
+        content = JSON.stringify(data, null, 2);
+        filename = 'keyword_research_complete.json';
+    }
+    
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // Analyze competitors
@@ -635,7 +2186,32 @@ function displayCompetitorResults(data) {
                 </div>
             </div>
             
-            <!-- Content Gaps - Always Show -->
+            <!-- Enhanced Features: Domain Analysis -->
+            ${data.domain_analysis ? `
+                <div class="comparison-section domain-analysis-section">
+                    <h3><i class="fas fa-sitemap"></i> Domain-Level Analysis</h3>
+                    <div class="domain-analysis-grid">
+                        <div class="domain-item">
+                            <h4>Your Site</h4>
+                            <p><strong>Pages Analyzed:</strong> ${data.domain_analysis.your_site?.pages_analyzed || 0}</p>
+                            <p><strong>Avg Word Count:</strong> ${Math.round(data.domain_analysis.your_site?.avg_word_count || 0)}</p>
+                            <p><strong>Avg SEO Score:</strong> ${Math.round(data.domain_analysis.your_site?.avg_seo_score || 0)}/100</p>
+                            <p><strong>Total Internal Links:</strong> ${data.domain_analysis.your_site?.total_internal_links || 0}</p>
+                            <p><strong>Total External Links:</strong> ${data.domain_analysis.your_site?.total_external_links || 0}</p>
+                        </div>
+                        <div class="domain-item">
+                            <h4>Competitor</h4>
+                            <p><strong>Pages Analyzed:</strong> ${data.domain_analysis.competitor?.pages_analyzed || 0}</p>
+                            <p><strong>Avg Word Count:</strong> ${Math.round(data.domain_analysis.competitor?.avg_word_count || 0)}</p>
+                            <p><strong>Avg SEO Score:</strong> ${Math.round(data.domain_analysis.competitor?.avg_seo_score || 0)}/100</p>
+                            <p><strong>Total Internal Links:</strong> ${data.domain_analysis.competitor?.total_internal_links || 0}</p>
+                            <p><strong>Total External Links:</strong> ${data.domain_analysis.competitor?.total_external_links || 0}</p>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Content Gaps -->
             ${data.content_gaps ? `
                 <div class="comparison-section content-gaps-section">
                     <h3><i class="fas fa-gap"></i> Content Gap Analysis</h3>
@@ -650,23 +2226,218 @@ function displayCompetitorResults(data) {
                             </div>
                         </div>
                         <div class="gap-item">
-                            <h4>Your Unique Topics (${data.content_gaps.unique_topics?.length || 0})</h4>
+                            <h4>Your Unique Topics (${data.content_gaps.your_unique_topics?.length || 0})</h4>
                             <p>Topics you cover that competitor doesn't:</p>
                             <div class="topic-tags">
-                                ${(data.content_gaps.unique_topics || []).slice(0, 15).map(topic => 
+                                ${(data.content_gaps.your_unique_topics || []).slice(0, 15).map(topic => 
                                     `<span class="topic-tag unique">${topic}</span>`
                                 ).join('') || '<p>No unique topics found</p>'}
                             </div>
                         </div>
                     </div>
-                    ${data.content_gaps.recommendations && data.content_gaps.recommendations.length > 0 ? `
-                        <div class="content-recommendations">
-                            <h4>Content Recommendations</h4>
-                            <ul>
-                                ${data.content_gaps.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                            </ul>
+                    ${data.content_gaps.opportunities && data.content_gaps.opportunities.length > 0 ? `
+                        <div class="content-opportunities">
+                            <h4><i class="fas fa-star"></i> Top Content Opportunities</h4>
+                            <div class="opportunities-list">
+                                ${data.content_gaps.opportunities.slice(0, 10).map(opp => `
+                                    <div class="opportunity-item">
+                                        <span class="opportunity-topic">${opp.topic}</span>
+                                        <span class="opportunity-score">Score: ${Math.round(opp.opportunity_score)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
                     ` : ''}
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Keyword Opportunities -->
+            ${data.keyword_opportunities ? `
+                <div class="comparison-section keyword-opportunities-section">
+                    <h3><i class="fas fa-key"></i> Keyword Opportunities</h3>
+                    <div class="keyword-opportunities-grid">
+                        <div class="opportunity-stats">
+                            <p><strong>Total Opportunities:</strong> ${data.keyword_opportunities.opportunity_count || 0}</p>
+                            <p><strong>Common Keywords:</strong> ${data.keyword_opportunities.common_count || 0}</p>
+                        </div>
+                        ${data.keyword_opportunities.opportunities && data.keyword_opportunities.opportunities.length > 0 ? `
+                            <div class="opportunities-list">
+                                <h4>Top Keyword Opportunities</h4>
+                                <div class="keyword-opportunities-list">
+                                    ${data.keyword_opportunities.opportunities.slice(0, 20).map(kw => `
+                                        <div class="keyword-opportunity-item">
+                                            <span class="keyword-text">${kw.keyword}</span>
+                                            <span class="keyword-metrics">
+                                                <span class="badge">Count: ${kw.count}</span>
+                                                <span class="badge">Score: ${Math.round(kw.opportunity_score)}</span>
+                                            </span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Internal Linking Comparison -->
+            ${data.linking_comparison ? `
+                <div class="comparison-section linking-comparison-section">
+                    <h3><i class="fas fa-link"></i> Internal Linking Structure</h3>
+                    <div class="linking-comparison-grid">
+                        <div class="linking-item">
+                            <h4>Your Site</h4>
+                            <p><strong>Total Links:</strong> ${data.linking_comparison.your_site?.total_links || 0}</p>
+                            <p><strong>Avg Links/Page:</strong> ${Math.round(data.linking_comparison.your_site?.avg_links_per_page || 0)}</p>
+                            <p><strong>Max Links (Single Page):</strong> ${data.linking_comparison.your_site?.max_links_page || 0}</p>
+                        </div>
+                        <div class="linking-item">
+                            <h4>Competitor</h4>
+                            <p><strong>Total Links:</strong> ${data.linking_comparison.competitor?.total_links || 0}</p>
+                            <p><strong>Avg Links/Page:</strong> ${Math.round(data.linking_comparison.competitor?.avg_links_per_page || 0)}</p>
+                            <p><strong>Max Links (Single Page):</strong> ${data.linking_comparison.competitor?.max_links_page || 0}</p>
+                        </div>
+                    </div>
+                    ${data.linking_comparison.comparison ? `
+                        <div class="linking-diff">
+                            <p><strong>Link Count Difference:</strong> ${data.linking_comparison.comparison.link_count_diff || 0}</p>
+                            <p><strong>Avg Links Difference:</strong> ${Math.round(data.linking_comparison.comparison.avg_links_per_page_diff || 0)}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Content Freshness -->
+            ${data.freshness_analysis ? `
+                <div class="comparison-section freshness-section">
+                    <h3><i class="fas fa-clock"></i> Content Freshness Analysis</h3>
+                    <div class="freshness-grid">
+                        <div class="freshness-item">
+                            <h4>Your Site</h4>
+                            <p><strong>Freshness Score:</strong> ${data.freshness_analysis.your_site?.freshness_score || 0}/100</p>
+                            <p><strong>Update Indicators:</strong> ${data.freshness_analysis.your_site?.update_indicators || 0}</p>
+                            <p><strong>Has Meta Date:</strong> ${data.freshness_analysis.your_site?.has_meta_date ? '✅' : '❌'}</p>
+                            <p><strong>Freshness Keywords:</strong> ${data.freshness_analysis.your_site?.freshness_keywords || 0}</p>
+                        </div>
+                        <div class="freshness-item">
+                            <h4>Competitor</h4>
+                            <p><strong>Freshness Score:</strong> ${data.freshness_analysis.competitor?.freshness_score || 0}/100</p>
+                            <p><strong>Update Indicators:</strong> ${data.freshness_analysis.competitor?.update_indicators || 0}</p>
+                            <p><strong>Has Meta Date:</strong> ${data.freshness_analysis.competitor?.has_meta_date ? '✅' : '❌'}</p>
+                            <p><strong>Freshness Keywords:</strong> ${data.freshness_analysis.competitor?.freshness_keywords || 0}</p>
+                        </div>
+                    </div>
+                    ${data.freshness_analysis.comparison ? `
+                        <div class="freshness-winner">
+                            <p><strong>Fresher Content:</strong> ${data.freshness_analysis.comparison.fresher === 'your_site' ? '✅ Your Site' : '⚠️ Competitor'}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Social Signals -->
+            ${data.social_signals ? `
+                <div class="comparison-section social-signals-section">
+                    <h3><i class="fas fa-share-alt"></i> Social Signals Comparison</h3>
+                    <div class="social-signals-grid">
+                        <div class="social-item">
+                            <h4>Your Site</h4>
+                            <p><strong>Social Score:</strong> ${data.social_signals.your_site?.social_score || 0}/100</p>
+                            <p><strong>Platforms:</strong> ${data.social_signals.your_site?.platform_count || 0}</p>
+                            <p><strong>OG Tags:</strong> ${data.social_signals.your_site?.og_tags || 0}</p>
+                            <p><strong>Twitter Tags:</strong> ${data.social_signals.your_site?.twitter_tags || 0}</p>
+                            ${data.social_signals.your_site?.social_platforms ? `
+                                <div class="social-platforms-list">
+                                    ${Object.entries(data.social_signals.your_site.social_platforms).map(([platform, has]) => 
+                                        `<span class="social-badge ${has ? 'active' : 'inactive'}">${platform}</span>`
+                                    ).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="social-item">
+                            <h4>Competitor</h4>
+                            <p><strong>Social Score:</strong> ${data.social_signals.competitor?.social_score || 0}/100</p>
+                            <p><strong>Platforms:</strong> ${data.social_signals.competitor?.platform_count || 0}</p>
+                            <p><strong>OG Tags:</strong> ${data.social_signals.competitor?.og_tags || 0}</p>
+                            <p><strong>Twitter Tags:</strong> ${data.social_signals.competitor?.twitter_tags || 0}</p>
+                            ${data.social_signals.competitor?.social_platforms ? `
+                                <div class="social-platforms-list">
+                                    ${Object.entries(data.social_signals.competitor.social_platforms).map(([platform, has]) => 
+                                        `<span class="social-badge ${has ? 'active' : 'inactive'}">${platform}</span>`
+                                    ).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Competitive Advantage Matrix -->
+            ${data.advantage_matrix ? `
+                <div class="comparison-section advantage-matrix-section">
+                    <h3><i class="fas fa-chart-line"></i> Competitive Advantage Matrix</h3>
+                    <div class="advantage-matrix-grid">
+                        ${data.advantage_matrix.your_advantages && data.advantage_matrix.your_advantages.length > 0 ? `
+                            <div class="advantage-category">
+                                <h4><i class="fas fa-check-circle"></i> Your Advantages</h4>
+                                <div class="advantage-tags">
+                                    ${data.advantage_matrix.your_advantages.map(adv => 
+                                        `<span class="advantage-tag positive">${adv}</span>`
+                                    ).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${data.advantage_matrix.competitor_advantages && data.advantage_matrix.competitor_advantages.length > 0 ? `
+                            <div class="advantage-category">
+                                <h4><i class="fas fa-exclamation-circle"></i> Competitor Advantages</h4>
+                                <div class="advantage-tags">
+                                    ${data.advantage_matrix.competitor_advantages.map(adv => 
+                                        `<span class="advantage-tag negative">${adv}</span>`
+                                    ).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${data.advantage_matrix.opportunities && data.advantage_matrix.opportunities.length > 0 ? `
+                            <div class="advantage-category">
+                                <h4><i class="fas fa-lightbulb"></i> Opportunities</h4>
+                                <div class="opportunities-list">
+                                    ${data.advantage_matrix.opportunities.map(opp => `
+                                        <div class="opportunity-card ${opp.priority}">
+                                            <span class="priority-badge ${opp.priority}">${opp.priority}</span>
+                                            <strong>${opp.category}</strong>
+                                            <p>${opp.description}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Enhanced Features: Prioritized Action Plan -->
+            ${data.action_plan && data.action_plan.length > 0 ? `
+                <div class="comparison-section action-plan-section">
+                    <h3><i class="fas fa-tasks"></i> Prioritized Action Plan</h3>
+                    <div class="action-plan-list">
+                        ${data.action_plan.map((action, index) => `
+                            <div class="action-item priority-${action.priority}">
+                                <div class="action-header">
+                                    <span class="action-number">${index + 1}</span>
+                                    <span class="priority-badge ${action.priority}">${action.priority.toUpperCase()}</span>
+                                    <strong>${action.category}</strong>
+                                </div>
+                                <div class="action-body">
+                                    <p class="action-text"><strong>Action:</strong> ${action.action}</p>
+                                    <p class="action-reason"><strong>Reason:</strong> ${action.reason}</p>
+                                    <div class="action-meta">
+                                        <span class="meta-badge">Impact: ${action.estimated_impact}</span>
+                                        <span class="meta-badge">Effort: ${action.effort}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
             ` : ''}
             
@@ -1003,10 +2774,28 @@ async function handleFormSubmit(e) {
 
 // Show progress card
 function showProgressCard() {
+    // Show top progress bar
+    const topProgressBar = document.getElementById('topProgressBar');
+    if (topProgressBar) {
+        topProgressBar.style.display = 'block';
+        document.body.classList.add('progress-bar-active');
+    }
+    
     document.getElementById('progressCard').style.display = 'block';
     document.getElementById('resultsCard').style.display = 'none';
     document.getElementById('progressFill').style.width = '0%';
     document.getElementById('progressText').textContent = '0%';
+    
+    // Initialize top progress bar
+    if (topProgressBar) {
+        const topProgressFill = document.getElementById('topProgressFill');
+        const topProgressText = document.getElementById('topProgressText');
+        const topProgressMessageText = document.getElementById('topProgressMessageText');
+        if (topProgressFill) topProgressFill.style.width = '0%';
+        if (topProgressText) topProgressText.textContent = '0%';
+        if (topProgressMessageText) topProgressMessageText.textContent = 'Crawling in Progress...';
+    }
+    
     const progressMessageText = document.getElementById('progressMessageText');
     const loadingIcon = document.getElementById('loadingIcon');
     if (progressMessageText) progressMessageText.textContent = 'Initializing...';
@@ -1026,8 +2815,29 @@ function updateProgress(data) {
     
     // Update progress bar with smooth animation
     const progress = data.progress || 0;
-    progressFill.style.width = progress + '%';
-    progressText.textContent = progress + '%';
+    if (progressFill) progressFill.style.width = progress + '%';
+    if (progressText) progressText.textContent = progress + '%';
+    
+    // Update top progress bar
+    const topProgressBar = document.getElementById('topProgressBar');
+    const topProgressFill = document.getElementById('topProgressFill');
+    const topProgressText = document.getElementById('topProgressText');
+    const topProgressMessageText = document.getElementById('topProgressMessageText');
+    const topProgressStats = document.getElementById('topProgressStats');
+    
+    if (topProgressBar && topProgressFill && topProgressText) {
+        topProgressFill.style.width = progress + '%';
+        topProgressText.textContent = progress + '%';
+        
+        if (topProgressMessageText && data.message) {
+            // Extract just the status part from message
+            let statusMsg = data.message;
+            if (statusMsg.includes('Found')) {
+                statusMsg = statusMsg.split('Found')[0] + 'Found' + statusMsg.split('Found')[1].split(',')[0];
+            }
+            topProgressMessageText.textContent = statusMsg || 'Crawling in Progress...';
+        }
+    }
     
     // Update message
     if (data.message) {
@@ -1067,6 +2877,87 @@ function updateProgress(data) {
                 externalCount.textContent = data.external_links;
             }
         }
+        
+        // Show discovered URLs if available
+        if (data.discovered_urls !== undefined && data.discovered_urls > 0) {
+            const discoveredInfo = document.getElementById('discoveredPagesInfo');
+            const discoveredCount = document.getElementById('discoveredPagesCount');
+            if (discoveredInfo && discoveredCount) {
+                discoveredInfo.style.display = 'inline';
+                discoveredCount.textContent = data.discovered_urls;
+            }
+        }
+        
+        // Show pages per second
+        if (data.pages_per_second !== undefined) {
+            const pagesPerSecondEl = document.getElementById('pagesPerSecond');
+            if (pagesPerSecondEl) {
+                pagesPerSecondEl.textContent = data.pages_per_second.toFixed(2);
+            }
+        }
+        
+        // Show average links per page
+        if (data.avg_links_per_page !== undefined) {
+            const avgLinksEl = document.getElementById('avgLinksPerPage');
+            if (avgLinksEl) {
+                avgLinksEl.textContent = data.avg_links_per_page.toFixed(1);
+            }
+        }
+        
+        // Show elapsed time
+        if (data.elapsed_time !== undefined) {
+            const elapsedTimeEl = document.getElementById('elapsedTime');
+            if (elapsedTimeEl) {
+                elapsedTimeEl.textContent = data.elapsed_time;
+            }
+        }
+        
+        // Show estimated time remaining
+        if (data.estimated_time_remaining !== undefined) {
+            const estimatedTimeEl = document.getElementById('estimatedTimeRemaining');
+            if (estimatedTimeEl) {
+                estimatedTimeEl.textContent = data.estimated_time_remaining;
+            }
+        }
+        
+        // Update top progress bar stats
+        if (topProgressStats) {
+            topProgressStats.style.display = 'flex';
+            
+            if (data.pages_crawled !== undefined) {
+                const topPagesCount = document.getElementById('topPagesCount');
+                if (topPagesCount) topPagesCount.textContent = data.pages_crawled;
+            }
+            
+            if (data.links_found !== undefined) {
+                const topLinksCount = document.getElementById('topLinksCount');
+                if (topLinksCount) topLinksCount.textContent = data.links_found;
+            }
+            
+            if (data.discovered_urls !== undefined && data.discovered_urls > 0) {
+                const topDiscoveredInfo = document.getElementById('topDiscoveredInfo');
+                const topDiscoveredCount = document.getElementById('topDiscoveredCount');
+                if (topDiscoveredInfo && topDiscoveredCount) {
+                    topDiscoveredInfo.style.display = 'inline';
+                    topDiscoveredCount.textContent = data.discovered_urls;
+                }
+            }
+            
+            if (data.pages_per_second !== undefined) {
+                const topPagesPerSecond = document.getElementById('topPagesPerSecond');
+                if (topPagesPerSecond) topPagesPerSecond.textContent = data.pages_per_second.toFixed(2);
+            }
+            
+            if (data.elapsed_time !== undefined) {
+                const topElapsedTime = document.getElementById('topElapsedTime');
+                if (topElapsedTime) topElapsedTime.textContent = data.elapsed_time;
+            }
+            
+            if (data.estimated_time_remaining !== undefined) {
+                const topEstimatedTime = document.getElementById('topEstimatedTime');
+                if (topEstimatedTime) topEstimatedTime.textContent = data.estimated_time_remaining;
+            }
+        }
     }
     
     // Update current page info
@@ -1080,6 +2971,17 @@ function updateProgress(data) {
                 : data.current_page;
             currentPageText.textContent = `Current: ${pageDisplay}`;
         }
+        
+        // Update top progress current page
+        const topCurrentPageInfo = document.getElementById('topCurrentPageInfo');
+        const topCurrentPageText = document.getElementById('topCurrentPageText');
+        if (topCurrentPageInfo && topCurrentPageText) {
+            topCurrentPageInfo.style.display = 'block';
+            const pageDisplay = data.current_page.length > 80 
+                ? data.current_page.substring(0, 80) + '...' 
+                : data.current_page;
+            topCurrentPageText.textContent = pageDisplay;
+        }
     }
     
     // Handle errors
@@ -1087,6 +2989,12 @@ function updateProgress(data) {
         errorContainer.style.display = 'block';
         errorContainer.innerHTML = '<strong>Error:</strong> ' + data.message;
         if (loadingIcon) loadingIcon.style.display = 'none';
+        
+        // Hide top progress bar on error
+        if (topProgressBar) {
+            topProgressBar.style.display = 'none';
+            document.body.classList.remove('progress-bar-active');
+        }
     } else {
         errorContainer.style.display = 'none';
     }
@@ -1094,6 +3002,23 @@ function updateProgress(data) {
     // Handle completion
     if (data.status === 'completed') {
         if (loadingIcon) loadingIcon.style.display = 'none';
+        
+        // Update top progress bar to 100%
+        if (topProgressBar && topProgressFill && topProgressText) {
+            topProgressFill.style.width = '100%';
+            topProgressText.textContent = '100%';
+            if (topProgressMessageText) {
+                topProgressMessageText.textContent = 'Crawl Completed!';
+            }
+        }
+        
+        // Hide top progress bar after a delay
+        setTimeout(() => {
+            if (topProgressBar) {
+                topProgressBar.style.display = 'none';
+                document.body.classList.remove('progress-bar-active');
+            }
+        }, 2000);
         
         // Reset button state
         const startBtn = document.getElementById('startBtn');
@@ -1119,6 +3044,13 @@ function updateProgress(data) {
 
 // Show results card
 function showResultsCard(jobId) {
+    // Hide top progress bar
+    const topProgressBar = document.getElementById('topProgressBar');
+    if (topProgressBar) {
+        topProgressBar.style.display = 'none';
+        document.body.classList.remove('progress-bar-active');
+    }
+    
     document.getElementById('progressCard').style.display = 'none';
     document.getElementById('resultsCard').style.display = 'block';
     

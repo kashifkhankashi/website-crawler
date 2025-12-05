@@ -22,3 +22,9 @@ python-socketio>=5.10.0
 # Advanced analysis
 playwright>=1.40.0
 
+# NLP for keyword research
+nltk>=3.8.0
+spacy>=3.7.0
+yake>=0.4.8
+rake-nltk>=1.0.6
+

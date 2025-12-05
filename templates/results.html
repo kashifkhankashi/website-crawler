@@ -278,27 +278,83 @@
                         </div>
                     </div>
                     
-                    <!-- Performance Summary Stats -->
-                    <div class="performance-summary" id="performanceSummary" style="display: none;">
-                        <div class="performance-summary-item">
-                            <span class="summary-value" id="summaryHeavyImages">0</span>
-                            <span class="summary-label">Heavy Images</span>
+                    <!-- Performance Score Overview -->
+                    <div class="performance-overview" id="performanceOverview">
+                        <div class="performance-score-card">
+                            <div class="score-circle">
+                                <svg class="score-circle-svg" viewBox="0 0 120 120">
+                                    <circle class="score-circle-bg" cx="60" cy="60" r="54"></circle>
+                                    <circle class="score-circle-progress" cx="60" cy="60" r="54" id="performanceScoreCircle"></circle>
+                                </svg>
+                                <div class="score-value" id="performanceScoreValue">--</div>
+                                <div class="score-label">Performance Score</div>
+                            </div>
+                            <div class="score-grade" id="performanceScoreGrade">--</div>
+                            <div class="score-description" id="performanceScoreDescription">Calculating performance metrics...</div>
                         </div>
-                        <div class="performance-summary-item">
-                            <span class="summary-value" id="summarySlowFiles">0</span>
-                            <span class="summary-label">Slow JS/CSS</span>
+                        <div class="performance-metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-icon"><i class="fas fa-images"></i></div>
+                                <div class="metric-value" id="metricHeavyImages">0</div>
+                                <div class="metric-label">Heavy Images</div>
+                                <div class="metric-status" id="statusHeavyImages">--</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon"><i class="fas fa-file-code"></i></div>
+                                <div class="metric-value" id="metricSlowFiles">0</div>
+                                <div class="metric-label">Slow JS/CSS Files</div>
+                                <div class="metric-status" id="statusSlowFiles">--</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon"><i class="fas fa-code"></i></div>
+                                <div class="metric-value" id="metricSlowSections">0</div>
+                                <div class="metric-label">Slow HTML Sections</div>
+                                <div class="metric-status" id="statusSlowSections">--</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon"><i class="fas fa-puzzle-piece"></i></div>
+                                <div class="metric-value" id="metricSlowComponents">0</div>
+                                <div class="metric-label">Slow Components</div>
+                                <div class="metric-status" id="statusSlowComponents">--</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon"><i class="fas fa-ban"></i></div>
+                                <div class="metric-value" id="metricRenderBlocking">0</div>
+                                <div class="metric-label">Render-Blocking</div>
+                                <div class="metric-status" id="statusRenderBlocking">--</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-icon"><i class="fas fa-bolt"></i></div>
+                                <div class="metric-value" id="metricTotalIssues">0</div>
+                                <div class="metric-label">Total Issues</div>
+                                <div class="metric-status" id="statusTotalIssues">--</div>
+                            </div>
                         </div>
-                        <div class="performance-summary-item">
-                            <span class="summary-value" id="summarySlowSections">0</span>
-                            <span class="summary-label">Slow Sections</span>
-                        </div>
-                        <div class="performance-summary-item">
-                            <span class="summary-value" id="summarySlowComponents">0</span>
-                            <span class="summary-label">Slow Components</span>
-                        </div>
-                        <div class="performance-summary-item">
-                            <span class="summary-value" id="summaryRenderBlocking">0</span>
-                            <span class="summary-label">Render-Blocking</span>
+                    </div>
+                    
+                    <!-- Pages with Issues Summary -->
+                    <div class="performance-pages-summary" id="performancePagesSummary" style="display: none;">
+                        <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-list-ul"></i> Pages with Performance Issues
+                        </h3>
+                        <div class="pages-summary-table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page URL</th>
+                                        <th>Heavy Images</th>
+                                        <th>Slow JS/CSS</th>
+                                        <th>Slow Sections</th>
+                                        <th>Slow Components</th>
+                                        <th>Render-Blocking</th>
+                                        <th>Total Issues</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="performancePagesSummaryBody">
+                                    <tr><td colspan="8" class="loading">Loading page summary...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                     

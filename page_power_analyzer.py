@@ -5,9 +5,10 @@ Similar to Siteliner's Page Power feature.
 This module implements a PageRank-like algorithm to determine which pages
 are most influential within the site based on internal link structure.
 """
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 from urllib.parse import urlparse
+import re
 
 
 class PagePowerAnalyzer:
@@ -25,6 +26,29 @@ class PagePowerAnalyzer:
         self.incoming_links = defaultdict(int)  # url -> count of incoming links
         self.outgoing_links = defaultdict(int)  # url -> count of outgoing links
         self.page_powers = {}  # url -> power score (0-100)
+        # Utility page patterns (case-insensitive)
+        self.utility_page_patterns = [
+            r'/about',
+            r'/privacy',
+            r'/terms',
+            r'/policy',
+            r'/contact',
+            r'/legal',
+            r'/cookie',
+            r'/disclaimer',
+            r'/sitemap',
+            r'/search',
+            r'/login',
+            r'/signup',
+            r'/register',
+            r'/cart',
+            r'/checkout',
+            r'/account',
+            r'/profile',
+            r'/faq',
+            r'/help',
+            r'/support'
+        ]
     
     def analyze_site(self, pages: List[Dict]) -> Dict[str, float]:
         """
@@ -180,24 +204,47 @@ class PagePowerAnalyzer:
         
         powers = list(self.page_powers.values())
         
-        # Get top pages by power
+        # Classify pages
+        page_classifications = self.classify_pages(pages)
+        
+        # Get top pages by power (filter utility pages for main ranking)
         sorted_pages = sorted(
             self.page_powers.items(),
             key=lambda x: x[1],
             reverse=True
-        )[:10]
+        )
+        
+        # Separate main and utility pages
+        main_pages_sorted = [p for p in sorted_pages if page_classifications.get(p[0], 'main') == 'main']
+        utility_pages_sorted = [p for p in sorted_pages if page_classifications.get(p[0], 'main') == 'utility']
         
         # Find page titles for top pages
         page_dict = {page.get('url', ''): page for page in pages}
+        
+        # Top 10 main pages
         top_pages = []
-        for url, power_score in sorted_pages:
+        for url, power_score in main_pages_sorted[:10]:
             page = page_dict.get(url, {})
             top_pages.append({
                 'url': url,
                 'title': page.get('title', 'No Title'),
                 'power': power_score,
                 'incoming_links': self.incoming_links.get(url, 0),
-                'outgoing_links': self.outgoing_links.get(url, 0)
+                'outgoing_links': self.outgoing_links.get(url, 0),
+                'page_type': page_classifications.get(url, 'main')
+            })
+        
+        # Top utility pages (for reference)
+        top_utility_pages = []
+        for url, power_score in utility_pages_sorted[:5]:
+            page = page_dict.get(url, {})
+            top_utility_pages.append({
+                'url': url,
+                'title': page.get('title', 'No Title'),
+                'power': power_score,
+                'incoming_links': self.incoming_links.get(url, 0),
+                'outgoing_links': self.outgoing_links.get(url, 0),
+                'page_type': 'utility'
             })
         
         # Get link analysis for all pages
@@ -266,16 +313,24 @@ class PagePowerAnalyzer:
             'low': sum(1 for p in powers if p < 40)
         }
         
+        # Count main vs utility pages (page_classifications already computed above)
+        main_pages_count = sum(1 for url in self.page_powers.keys() if page_classifications.get(url, 'main') == 'main')
+        utility_pages_count = sum(1 for url in self.page_powers.keys() if page_classifications.get(url, 'main') == 'utility')
+        
         return {
             'total_pages': len(self.page_powers),
+            'main_pages_count': main_pages_count,
+            'utility_pages_count': utility_pages_count,
             'average_power': round(sum(powers) / len(powers), 2) if powers else 0,
             'highest_power': round(max(powers), 2) if powers else 0,
             'lowest_power': round(min(powers), 2) if powers else 0,
             'top_pages': top_pages,
+            'top_utility_pages': top_utility_pages,
             'link_analysis': link_analysis,
             'orphan_pages': orphan_pages_data,
             'hub_pages': hub_pages_data,
-            'power_distribution': power_distribution
+            'power_distribution': power_distribution,
+            'page_classifications': page_classifications
         }
     
     def get_orphan_pages(self, pages: List[Dict]) -> List[str]:
@@ -305,4 +360,73 @@ class PagePowerAnalyzer:
                 orphan_pages.append(url)
         
         return orphan_pages
+    
+    def _classify_page_type(self, url: str, title: Optional[str] = None) -> str:
+        """
+        Classify page as 'main', 'utility', or 'other' based on URL patterns and title.
+        
+        Args:
+            url: Page URL
+            title: Page title (optional)
+            
+        Returns:
+            Page type: 'main', 'utility', or 'other'
+        """
+        parsed = urlparse(url)
+        path = parsed.path.lower()
+        
+        # Check if homepage
+        if path == '/' or path == '':
+            return 'main'
+        
+        # Check URL patterns for utility pages
+        for pattern in self.utility_page_patterns:
+            if re.search(pattern, path, re.IGNORECASE):
+                return 'utility'
+        
+        # Check title for utility page keywords
+        if title:
+            title_lower = title.lower()
+            utility_keywords = [
+                'about us', 'about', 'privacy policy', 'privacy',
+                'terms of service', 'terms', 'legal', 'contact us',
+                'contact', 'cookie policy', 'disclaimer', 'sitemap',
+                'faq', 'help', 'support', 'login', 'sign up', 'register'
+            ]
+            for keyword in utility_keywords:
+                if keyword in title_lower:
+                    return 'utility'
+        
+        # Default to main content page
+        return 'main'
+    
+    def classify_pages(self, pages: List[Dict]) -> Dict[str, str]:
+        """
+        Classify all pages by type.
+        
+        Args:
+            pages: List of page dictionaries
+            
+        Returns:
+            Dictionary mapping URL to page type ('main', 'utility', 'other')
+        """
+        classifications = {}
+        for page in pages:
+            url = page.get('url', '')
+            title = page.get('title', '')
+            classifications[url] = self._classify_page_type(url, title)
+        return classifications
+    
+    def get_main_pages_only(self, pages: List[Dict]) -> List[Dict]:
+        """
+        Filter pages to return only main content pages (exclude utility pages).
+        
+        Args:
+            pages: List of all pages
+            
+        Returns:
+            Filtered list containing only main content pages
+        """
+        classifications = self.classify_pages(pages)
+        return [page for page in pages if classifications.get(page.get('url', ''), 'main') == 'main']
 
