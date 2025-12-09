@@ -162,6 +162,12 @@ function displayAllSections(data) {
     }
     
     try {
+        displayCanonicalLinks(data);
+    } catch (e) {
+        console.error('Error displaying canonical links:', e);
+    }
+    
+    try {
         displayPagePower(data);
     } catch (e) {
         console.error('Error displaying page power:', e);
@@ -5759,35 +5765,99 @@ function displayOrphanPages(data) {
         return;
     }
     
-    // Find page details for orphan pages
+    // Normalize URLs for comparison (handle trailing slashes, etc.)
+    const normalizeUrl = (url) => {
+        if (!url) return '';
+        try {
+            const urlObj = new URL(url);
+            let path = urlObj.pathname;
+            // Remove trailing slash except for root
+            if (path !== '/' && path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+            return urlObj.origin + path + urlObj.search;
+        } catch (e) {
+            return url;
+        }
+    };
+    
+    // Find page details for orphan pages with better matching
     const orphanPageDetails = [];
-    orphanPages.forEach(url => {
-        const page = data.pages?.find(p => p.url === url);
+    const normalizedOrphanUrls = new Set(orphanPages.map(normalizeUrl));
+    
+    orphanPages.forEach(orphanUrl => {
+        const normalizedOrphan = normalizeUrl(orphanUrl);
+        
+        // Try exact match first
+        let page = data.pages?.find(p => {
+            const normalizedPage = normalizeUrl(p.url);
+            return normalizedPage === normalizedOrphan || p.url === orphanUrl;
+        });
+        
+        // If not found, try case-insensitive and path variations
+        if (!page) {
+            page = data.pages?.find(p => {
+                const normalizedPage = normalizeUrl(p.url);
+                return normalizedPage.toLowerCase() === normalizedOrphan.toLowerCase();
+            });
+        }
+        
         if (page) {
+            // Calculate incoming links count
+            let incomingLinksCount = 0;
+            if (data.pages) {
+                data.pages.forEach(p => {
+                    const internalLinks = p.internal_links || [];
+                    internalLinks.forEach(link => {
+                        const linkUrl = typeof link === 'string' ? link : (link.url || '');
+                        if (linkUrl) {
+                            const normalizedLink = normalizeUrl(linkUrl);
+                            if (normalizedLink === normalizedOrphan || normalizeUrl(linkUrl) === normalizedOrphan) {
+                                incomingLinksCount++;
+                            }
+                        }
+                    });
+                });
+            }
+            
             orphanPageDetails.push({
                 url: page.url,
-                title: page.title,
-                word_count: page.word_count,
-                status_code: page.status_code,
+                title: page.title || 'Untitled',
+                word_count: page.word_count || 0,
+                status_code: page.status_code || 0,
                 internal_links: (page.internal_links || []).length,
-                seo_score: page.seo_score?.score
+                incoming_links: incomingLinksCount,
+                seo_score: page.seo_score?.score || null,
+                is_exact_duplicate: page.is_exact_duplicate || false
             });
         } else {
+            // Page not found in crawled pages (might be skipped or error)
             orphanPageDetails.push({
-                url: url,
-                title: 'Unknown',
+                url: orphanUrl,
+                title: 'Page Not Found in Crawl',
                 word_count: 0,
                 status_code: 0,
                 internal_links: 0,
-                seo_score: null
+                incoming_links: 0,
+                seo_score: null,
+                is_exact_duplicate: false,
+                note: 'This page was detected as orphan but was not successfully crawled'
             });
         }
     });
     
+    // Sort by word count (descending) - prioritize pages with content
+    orphanPageDetails.sort((a, b) => (b.word_count || 0) - (a.word_count || 0));
+    
     let html = `
         <div class="orphan-pages-info">
-            <p><strong>Orphan pages</strong> are pages that have no internal links pointing to them. 
-            These pages are harder for search engines to discover and may not be indexed.</p>
+            <div class="info-box">
+                <h4><i class="fas fa-info-circle"></i> What are Orphan Pages?</h4>
+                <p><strong>Orphan pages</strong> are pages that have no internal links pointing to them from other pages on your site. 
+                These pages are harder for search engines to discover and may not be indexed properly.</p>
+                <p><strong>Impact:</strong> Orphan pages can hurt your SEO because search engines rely on internal linking to discover and rank pages. 
+                Pages without internal links receive less link equity and may be deprioritized in search results.</p>
+            </div>
         </div>
         <div class="table-container">
             <table id="orphanPagesTable">
@@ -5796,8 +5866,9 @@ function displayOrphanPages(data) {
                         <th>Page URL</th>
                         <th>Title</th>
                         <th>Word Count</th>
+                        <th>Incoming Links</th>
+                        <th>Outgoing Links</th>
                         <th>Status</th>
-                        <th>SEO Score</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -5805,23 +5876,36 @@ function displayOrphanPages(data) {
     `;
     
     orphanPageDetails.forEach(page => {
+        const statusClass = page.status_code === 200 ? '200' : page.status_code >= 400 ? 'error' : 'warning';
+        const statusText = page.status_code || 'Unknown';
+        
         html += `
-            <tr>
-                <td><a href="${page.url}" target="_blank">${page.url}</a></td>
-                <td>${page.title || '-'}</td>
+            <tr class="${page.note ? 'orphan-warning' : ''}">
+                <td>
+                    <a href="${page.url}" target="_blank" title="${page.url}">
+                        ${truncateUrl(page.url, 60)}
+                    </a>
+                    ${page.note ? `<br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ${page.note}</small>` : ''}
+                </td>
+                <td>${escapeHtml(page.title) || '-'}</td>
                 <td>${page.word_count || 0}</td>
                 <td>
-                    <span class="status-badge status-${page.status_code === 200 ? '200' : 'error'}">
-                        ${page.status_code || 'Unknown'}
+                    <span class="badge ${page.incoming_links === 0 ? 'badge-danger' : 'badge-warning'}">
+                        ${page.incoming_links} ${page.incoming_links === 1 ? 'link' : 'links'}
+                    </span>
+                </td>
+                <td>${page.internal_links || 0}</td>
+                <td>
+                    <span class="status-badge status-${statusClass}">
+                        ${statusText}
                     </span>
                 </td>
                 <td>
-                    ${page.seo_score !== null ? `<span class="score-badge">${page.seo_score}</span>` : 'N/A'}
-                </td>
-                <td>
-                    <button class="action-btn action-btn-view" data-url="${page.url}">
-                        <i class="fas fa-eye"></i> View
-                    </button>
+                    ${page.url && !page.note ? `
+                        <button class="action-btn action-btn-view" data-url="${page.url}" title="View Page Details">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    ` : '<span class="text-muted">N/A</span>'}
                 </td>
             </tr>
         `;
@@ -5832,13 +5916,26 @@ function displayOrphanPages(data) {
             </table>
         </div>
         <div class="orphan-pages-suggestion">
-            <h4><i class="fas fa-lightbulb"></i> Recommendations:</h4>
-            <ul>
-                <li>Add internal links to orphan pages from your main navigation or related content</li>
-                <li>Include orphan pages in your XML sitemap</li>
-                <li>Create a "Site Map" page that links to all important pages</li>
-                <li>Add links to orphan pages from your homepage or category pages</li>
-            </ul>
+            <h4><i class="fas fa-lightbulb"></i> How to Fix Orphan Pages:</h4>
+            <div class="recommendations-grid">
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-link"></i> Add Internal Links</h5>
+                    <p>Add internal links to orphan pages from your main navigation, related content pages, or category pages. 
+                    This helps search engines discover these pages and improves their ranking potential.</p>
+                </div>
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-sitemap"></i> Update XML Sitemap</h5>
+                    <p>Ensure all orphan pages are included in your XML sitemap. This helps search engines find pages even if they're not linked internally.</p>
+                </div>
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-home"></i> Link from Homepage</h5>
+                    <p>Add links to important orphan pages from your homepage or main landing pages. Homepage links carry more weight in SEO.</p>
+                </div>
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-project-diagram"></i> Create Site Map Page</h5>
+                    <p>Create a "Site Map" or "All Pages" page that links to all important pages on your site, including orphan pages.</p>
+                </div>
+            </div>
         </div>
     `;
     
@@ -5848,11 +5945,666 @@ function displayOrphanPages(data) {
     const viewButtons = container.querySelectorAll('button.action-btn-view');
     viewButtons.forEach(btn => {
         const url = btn.getAttribute('data-url');
-        const page = data.pages?.find(p => p.url === url);
-        if (page) {
-            btn.onclick = () => showPageDetails(page);
+        if (url) {
+            const page = data.pages?.find(p => {
+                const normalizedPage = normalizeUrl(p.url);
+                const normalizedBtn = normalizeUrl(url);
+                return normalizedPage === normalizedBtn || p.url === url;
+            });
+            if (page) {
+                btn.onclick = () => showPageDetails(page);
+            }
         }
     });
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Display Canonical Links Analysis
+function displayCanonicalLinks(data) {
+    if (!data || !data.pages) return;
+    
+    const pages = data.pages;
+    const allPages = new Map();
+    pages.forEach(page => {
+        allPages.set(page.url, page);
+    });
+    
+    // Normalize URL for comparison
+    const normalizeUrl = (url) => {
+        if (!url) return '';
+        try {
+            const urlObj = new URL(url);
+            let path = urlObj.pathname;
+            if (path !== '/' && path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+            return urlObj.origin + path + urlObj.search;
+        } catch (e) {
+            return url;
+        }
+    };
+    
+    // Analyze all canonical links
+    const canonicalAnalysis = [];
+    const canonicalMap = new Map(); // canonical URL -> array of pages using it
+    const missingCanonical = [];
+    const selfReferencing = [];
+    const differentPage = [];
+    const externalCanonical = [];
+    const relativeCanonical = [];
+    const canonicalChains = [];
+    
+    pages.forEach(page => {
+        const pageUrl = page.url;
+        const canonicalUrl = (page.canonical_url || '').trim();
+        const normalizedPageUrl = normalizeUrl(pageUrl);
+        
+        const analysis = {
+            pageUrl: pageUrl,
+            pageTitle: page.title || 'Untitled',
+            canonicalUrl: canonicalUrl,
+            normalizedPageUrl: normalizedPageUrl,
+            normalizedCanonicalUrl: canonicalUrl ? normalizeUrl(canonicalUrl) : '',
+            issues: [],
+            status: 'ok',
+            severity: 'low'
+        };
+        
+        // Check if canonical exists
+        if (!canonicalUrl) {
+            analysis.issues.push('missing');
+            analysis.status = 'missing';
+            analysis.severity = 'medium';
+            missingCanonical.push(analysis);
+        } else {
+            // Check if relative URL
+            if (!canonicalUrl.startsWith('http://') && !canonicalUrl.startsWith('https://')) {
+                analysis.issues.push('relative');
+                analysis.status = 'relative';
+                analysis.severity = 'low';
+                relativeCanonical.push(analysis);
+            } else {
+                // Check if external domain
+                try {
+                    const pageDomain = new URL(pageUrl).hostname;
+                    const canonicalDomain = new URL(canonicalUrl).hostname;
+                    if (pageDomain !== canonicalDomain) {
+                        analysis.issues.push('external');
+                        analysis.status = 'external';
+                        analysis.severity = 'high';
+                        externalCanonical.push(analysis);
+                    }
+                } catch (e) {
+                    analysis.issues.push('invalid');
+                    analysis.status = 'invalid';
+                    analysis.severity = 'high';
+                }
+                
+                // Check if self-referencing
+                if (analysis.normalizedCanonicalUrl === analysis.normalizedPageUrl) {
+                    analysis.issues.push('self-reference');
+                    analysis.status = 'self-reference';
+                    analysis.severity = 'low';
+                    selfReferencing.push(analysis);
+                } else if (analysis.normalizedCanonicalUrl && analysis.normalizedCanonicalUrl !== analysis.normalizedPageUrl) {
+                    // Points to different page
+                    analysis.issues.push('different-page');
+                    analysis.status = 'different-page';
+                    analysis.severity = 'medium';
+                    differentPage.push(analysis);
+                }
+            }
+            
+            // Track canonical usage
+            if (analysis.normalizedCanonicalUrl) {
+                if (!canonicalMap.has(analysis.normalizedCanonicalUrl)) {
+                    canonicalMap.set(analysis.normalizedCanonicalUrl, []);
+                }
+                canonicalMap.get(analysis.normalizedCanonicalUrl).push(analysis);
+            }
+        }
+        
+        canonicalAnalysis.push(analysis);
+    });
+    
+    // Detect duplicate canonicals (multiple pages pointing to same canonical)
+    const duplicateCanonicals = [];
+    canonicalMap.forEach((pagesUsingCanonical, canonicalUrl) => {
+        if (pagesUsingCanonical.length > 1) {
+            duplicateCanonicals.push({
+                canonicalUrl: canonicalUrl,
+                pages: pagesUsingCanonical,
+                count: pagesUsingCanonical.length
+            });
+        }
+    });
+    
+    // Detect canonical chains (A -> B -> C)
+    const chainMap = new Map();
+    canonicalAnalysis.forEach(analysis => {
+        if (analysis.normalizedCanonicalUrl && analysis.normalizedCanonicalUrl !== analysis.normalizedPageUrl) {
+            const targetPage = allPages.get(analysis.canonicalUrl);
+            if (targetPage) {
+                const targetCanonical = (targetPage.canonical_url || '').trim();
+                if (targetCanonical) {
+                    const normalizedTargetCanonical = normalizeUrl(targetCanonical);
+                    if (normalizedTargetCanonical !== analysis.normalizedCanonicalUrl) {
+                        // Chain detected: page -> canonical -> canonical's canonical
+                        const chainKey = `${analysis.normalizedPageUrl}->${analysis.normalizedCanonicalUrl}->${normalizedTargetCanonical}`;
+                        if (!chainMap.has(chainKey)) {
+                            chainMap.set(chainKey, {
+                                start: analysis.pageUrl,
+                                intermediate: analysis.canonicalUrl,
+                                end: targetCanonical,
+                                pages: [analysis]
+                            });
+                        } else {
+                            chainMap.get(chainKey).pages.push(analysis);
+                        }
+                    }
+                }
+            }
+        }
+    });
+    canonicalChains.push(...Array.from(chainMap.values()));
+    
+    // Calculate statistics
+    const stats = {
+        total: pages.length,
+        withCanonical: pages.length - missingCanonical.length,
+        missing: missingCanonical.length,
+        selfReference: selfReferencing.length,
+        differentPage: differentPage.length,
+        external: externalCanonical.length,
+        relative: relativeCanonical.length,
+        duplicate: duplicateCanonicals.length,
+        chains: canonicalChains.length
+    };
+    
+    // Update summary statistics
+    updateCanonicalSummaryStats(stats);
+    
+    // Display all canonical links table
+    displayCanonicalLinksTable(canonicalAnalysis, data);
+    
+    // Display detailed issue sections
+    displayMissingCanonical(missingCanonical);
+    displayCanonicalChains(canonicalChains);
+    displayDuplicateCanonicals(duplicateCanonicals);
+    displayExternalCanonicals(externalCanonical);
+    
+    // Display recommendations
+    displayCanonicalRecommendations(stats, canonicalAnalysis);
+    
+    // Setup filters
+    setupCanonicalFilters(canonicalAnalysis, data);
+}
+
+// Update canonical summary statistics
+function updateCanonicalSummaryStats(stats) {
+    const elements = {
+        totalPagesWithCanonical: document.getElementById('totalPagesWithCanonical'),
+        missingCanonicalCount: document.getElementById('missingCanonicalCount'),
+        selfReferenceCount: document.getElementById('selfReferenceCount'),
+        differentPageCount: document.getElementById('differentPageCount'),
+        duplicateCanonicalCount: document.getElementById('duplicateCanonicalCount'),
+        canonicalChainsCount: document.getElementById('canonicalChainsCount')
+    };
+    
+    if (elements.totalPagesWithCanonical) elements.totalPagesWithCanonical.textContent = stats.withCanonical;
+    if (elements.missingCanonicalCount) elements.missingCanonicalCount.textContent = stats.missing;
+    if (elements.selfReferenceCount) elements.selfReferenceCount.textContent = stats.selfReference;
+    if (elements.differentPageCount) elements.differentPageCount.textContent = stats.differentPage;
+    if (elements.duplicateCanonicalCount) elements.duplicateCanonicalCount.textContent = stats.duplicate;
+    if (elements.canonicalChainsCount) elements.canonicalChainsCount.textContent = stats.chains;
+}
+
+// Display all canonical links table
+function displayCanonicalLinksTable(canonicalAnalysis, data) {
+    const tbody = document.getElementById('canonicalLinksTableBody');
+    if (!tbody) return;
+    
+    if (canonicalAnalysis.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No pages found.</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    canonicalAnalysis.forEach(analysis => {
+        const statusBadge = getCanonicalStatusBadge(analysis);
+        const issuesBadges = analysis.issues.map(issue => getCanonicalIssueBadge(issue)).join(' ');
+        
+        html += `
+            <tr data-page-url="${analysis.pageUrl}" data-canonical-url="${analysis.canonicalUrl}" data-issues="${analysis.issues.join(',')}">
+                <td>
+                    <a href="${analysis.pageUrl}" target="_blank" title="${analysis.pageUrl}">
+                        ${truncateUrl(analysis.pageUrl, 50)}
+                    </a>
+                </td>
+                <td>${escapeHtml(analysis.pageTitle)}</td>
+                <td>
+                    ${analysis.canonicalUrl ? `
+                        <a href="${analysis.canonicalUrl}" target="_blank" title="${analysis.canonicalUrl}">
+                            ${truncateUrl(analysis.canonicalUrl, 50)}
+                        </a>
+                    ` : '<span class="text-muted">No canonical</span>'}
+                </td>
+                <td>${statusBadge}</td>
+                <td>${issuesBadges || '<span class="text-success">✓ OK</span>'}</td>
+                <td>
+                    <button class="action-btn action-btn-view" onclick="showCanonicalDetails('${analysis.pageUrl}')" title="View Details">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Get canonical status badge
+function getCanonicalStatusBadge(analysis) {
+    const statusMap = {
+        'ok': '<span class="badge badge-success">OK</span>',
+        'missing': '<span class="badge badge-danger">Missing</span>',
+        'self-reference': '<span class="badge badge-info">Self-Reference</span>',
+        'different-page': '<span class="badge badge-warning">Different Page</span>',
+        'external': '<span class="badge badge-danger">External</span>',
+        'relative': '<span class="badge badge-warning">Relative</span>',
+        'invalid': '<span class="badge badge-danger">Invalid</span>'
+    };
+    return statusMap[analysis.status] || statusMap['ok'];
+}
+
+// Get canonical issue badge
+function getCanonicalIssueBadge(issue) {
+    const issueMap = {
+        'missing': '<span class="badge badge-danger">Missing</span>',
+        'self-reference': '<span class="badge badge-info">Self-Reference</span>',
+        'different-page': '<span class="badge badge-warning">Different Page</span>',
+        'external': '<span class="badge badge-danger">External</span>',
+        'relative': '<span class="badge badge-warning">Relative</span>',
+        'duplicate-canonical': '<span class="badge badge-secondary">Duplicate</span>',
+        'chain': '<span class="badge badge-info">Chain</span>',
+        'invalid': '<span class="badge badge-danger">Invalid</span>'
+    };
+    return issueMap[issue] || '';
+}
+
+// Display missing canonical
+function displayMissingCanonical(missingCanonical) {
+    const container = document.getElementById('missingCanonicalContainer');
+    if (!container) return;
+    
+    if (missingCanonical.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages have canonical tags!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="canonical-issues-list">';
+    missingCanonical.slice(0, 50).forEach(analysis => {
+        html += `
+            <div class="canonical-issue-item">
+                <div class="canonical-issue-details">
+                    <div class="canonical-page-url">
+                        <a href="${analysis.pageUrl}" target="_blank">${truncateUrl(analysis.pageUrl, 60)}</a>
+                    </div>
+                    <div class="canonical-page-title">${escapeHtml(analysis.pageTitle)}</div>
+                    <div class="canonical-recommendation">
+                        <i class="fas fa-info-circle"></i> Add a canonical tag pointing to this page URL
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    if (missingCanonical.length > 50) {
+        html += `<div class="more-items">... and ${missingCanonical.length - 50} more pages</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display canonical chains
+function displayCanonicalChains(chains) {
+    const container = document.getElementById('canonicalChainsContainer');
+    if (!container) return;
+    
+    if (chains.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No canonical chains detected!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="canonical-issues-list">';
+    chains.slice(0, 20).forEach(chain => {
+        html += `
+            <div class="canonical-issue-item">
+                <div class="canonical-chain">
+                    <div class="chain-step">
+                        <strong>Start:</strong> <a href="${chain.start}" target="_blank">${truncateUrl(chain.start, 40)}</a>
+                    </div>
+                    <div class="chain-arrow">→</div>
+                    <div class="chain-step">
+                        <strong>Intermediate:</strong> <a href="${chain.intermediate}" target="_blank">${truncateUrl(chain.intermediate, 40)}</a>
+                    </div>
+                    <div class="chain-arrow">→</div>
+                    <div class="chain-step">
+                        <strong>End:</strong> <a href="${chain.end}" target="_blank">${truncateUrl(chain.end, 40)}</a>
+                    </div>
+                </div>
+                <div class="canonical-recommendation">
+                    <i class="fas fa-exclamation-triangle"></i> Canonical chain detected. Consider pointing directly to the final canonical URL.
+                </div>
+            </div>
+        `;
+    });
+    if (chains.length > 20) {
+        html += `<div class="more-items">... and ${chains.length - 20} more chains</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display duplicate canonicals
+function displayDuplicateCanonicals(duplicates) {
+    const container = document.getElementById('duplicateCanonicalsContainer');
+    if (!container) return;
+    
+    if (duplicates.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate canonicals found!</p></div>';
+        return;
+    }
+    
+    // Sort by count descending
+    duplicates.sort((a, b) => b.count - a.count);
+    
+    let html = '<div class="canonical-issues-list">';
+    duplicates.slice(0, 20).forEach(dup => {
+        html += `
+            <div class="canonical-issue-item">
+                <div class="canonical-duplicate-header">
+                    <strong>Canonical URL:</strong> <a href="${dup.canonicalUrl}" target="_blank">${truncateUrl(dup.canonicalUrl, 50)}</a>
+                    <span class="badge badge-secondary">${dup.count} pages</span>
+                </div>
+                <div class="canonical-pages-list">
+                    ${dup.pages.slice(0, 5).map(p => `
+                        <div class="canonical-page-item">
+                            <a href="${p.pageUrl}" target="_blank">${truncateUrl(p.pageUrl, 50)}</a>
+                        </div>
+                    `).join('')}
+                    ${dup.pages.length > 5 ? `<div class="more-pages">... and ${dup.pages.length - 5} more pages</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    if (duplicates.length > 20) {
+        html += `<div class="more-items">... and ${duplicates.length - 20} more duplicate canonicals</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display external canonicals
+function displayExternalCanonicals(external) {
+    const container = document.getElementById('externalCanonicalsContainer');
+    if (!container) return;
+    
+    if (external.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No external canonicals found!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="canonical-issues-list">';
+    external.slice(0, 30).forEach(analysis => {
+        try {
+            const pageDomain = new URL(analysis.pageUrl).hostname;
+            const canonicalDomain = new URL(analysis.canonicalUrl).hostname;
+            
+            html += `
+                <div class="canonical-issue-item">
+                    <div class="canonical-issue-details">
+                        <div class="canonical-page-url">
+                            <strong>Page:</strong> <a href="${analysis.pageUrl}" target="_blank">${truncateUrl(analysis.pageUrl, 50)}</a>
+                            <span class="badge">${pageDomain}</span>
+                        </div>
+                        <div class="canonical-external-url">
+                            <strong>Canonical:</strong> <a href="${analysis.canonicalUrl}" target="_blank">${truncateUrl(analysis.canonicalUrl, 50)}</a>
+                            <span class="badge badge-danger">${canonicalDomain}</span>
+                        </div>
+                        <div class="canonical-recommendation">
+                            <i class="fas fa-exclamation-triangle"></i> Canonical points to external domain. This may cause SEO issues.
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            // Skip invalid URLs
+        }
+    });
+    if (external.length > 30) {
+        html += `<div class="more-items">... and ${external.length - 30} more external canonicals</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display canonical recommendations
+function displayCanonicalRecommendations(stats, canonicalAnalysis) {
+    const container = document.getElementById('canonicalRecommendationsContainer');
+    if (!container) return;
+    
+    const recommendations = [];
+    
+    if (stats.missing > 0) {
+        recommendations.push({
+            title: 'Add Missing Canonical Tags',
+            description: `${stats.missing} page${stats.missing > 1 ? 's' : ''} are missing canonical tags.`,
+            priority: 'high',
+            fixes: [
+                'Add a canonical tag to every page pointing to the preferred URL version',
+                'Use absolute URLs (not relative) for canonical tags',
+                'Self-reference canonicals are acceptable (canonical = current page URL)',
+                'Include canonical tags in the <head> section of your HTML'
+            ],
+            code: `<link rel="canonical" href="https://example.com/page" />`
+        });
+    }
+    
+    if (stats.chains > 0) {
+        recommendations.push({
+            title: 'Fix Canonical Chains',
+            description: `${stats.chains} canonical chain${stats.chains > 1 ? 's' : ''} detected.`,
+            priority: 'medium',
+            fixes: [
+                'Point canonical tags directly to the final destination URL',
+                'Avoid chains like: Page A → Page B → Page C',
+                'Instead use: Page A → Page C, Page B → Page C',
+                'This helps search engines understand your preferred URLs faster'
+            ]
+        });
+    }
+    
+    if (stats.duplicate > 0) {
+        recommendations.push({
+            title: 'Review Duplicate Canonicals',
+            description: `${stats.duplicate} canonical URL${stats.duplicate > 1 ? 's are' : ' is'} used by multiple pages.`,
+            priority: 'low',
+            fixes: [
+                'Multiple pages can point to the same canonical URL (this is normal for duplicate content)',
+                'Ensure all duplicate/similar pages point to the same canonical',
+                'This helps consolidate ranking signals to one preferred page'
+            ]
+        });
+    }
+    
+    if (stats.external > 0) {
+        recommendations.push({
+            title: 'Fix External Canonicals',
+            description: `${stats.external} page${stats.external > 1 ? 's have' : ' has'} canonical tags pointing to external domains.`,
+            priority: 'high',
+            fixes: [
+                'Canonical tags should point to pages on your own domain',
+                'External canonicals can cause SEO issues and ranking problems',
+                'Update these canonicals to point to the correct internal page',
+                'If you need to point to external content, use a 301 redirect instead'
+            ]
+        });
+    }
+    
+    if (stats.relative > 0) {
+        recommendations.push({
+            title: 'Use Absolute URLs for Canonicals',
+            description: `${stats.relative} page${stats.relative > 1 ? 's have' : ' has'} relative canonical URLs.`,
+            priority: 'medium',
+            fixes: [
+                'Always use absolute URLs (starting with http:// or https://) for canonical tags',
+                'Relative URLs can cause confusion for search engines',
+                'Example: Use "https://example.com/page" not "/page"'
+            ],
+            code: `<!-- ❌ BAD: Relative URL -->
+<link rel="canonical" href="/page" />
+
+<!-- ✅ GOOD: Absolute URL -->
+<link rel="canonical" href="https://example.com/page" />`
+        });
+    }
+    
+    if (recommendations.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>Your canonical tags are properly configured!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="recommendations-list">';
+    recommendations.forEach(rec => {
+        const priorityClass = rec.priority === 'high' ? 'high' : rec.priority === 'medium' ? 'medium' : 'low';
+        html += `
+            <div class="recommendation-item ${priorityClass}">
+                <div class="recommendation-header">
+                    <h4 class="recommendation-title">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${rec.title}
+                    </h4>
+                    <span class="severity-badge ${priorityClass}">${rec.priority.toUpperCase()}</span>
+                </div>
+                <p class="recommendation-description">${rec.description}</p>
+                <div class="recommendation-fixes">
+                    <strong>How to Fix:</strong>
+                    <ul>
+                        ${rec.fixes.map(fix => `<li>${fix}</li>`).join('')}
+                    </ul>
+                    ${rec.code ? `<div class="code-example"><pre><code>${escapeHtml(rec.code)}</code></pre></div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Setup canonical filters
+function setupCanonicalFilters(canonicalAnalysis, data) {
+    const searchInput = document.getElementById('canonicalSearchInput');
+    const issueFilter = document.getElementById('canonicalIssueFilter');
+    const tbody = document.getElementById('canonicalLinksTableBody');
+    
+    if (!searchInput || !issueFilter || !tbody) return;
+    
+    const applyFilters = () => {
+        const searchTerm = (searchInput.value || '').toLowerCase();
+        const selectedIssue = issueFilter.value;
+        
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            let show = true;
+            
+            // Search filter
+            if (searchTerm) {
+                const pageUrl = (row.dataset.pageUrl || '').toLowerCase();
+                const canonicalUrl = (row.dataset.canonicalUrl || '').toLowerCase();
+                if (!pageUrl.includes(searchTerm) && !canonicalUrl.includes(searchTerm)) {
+                    show = false;
+                }
+            }
+            
+            // Issue filter
+            if (selectedIssue !== 'all') {
+                const issues = (row.dataset.issues || '').split(',');
+                if (!issues.includes(selectedIssue)) {
+                    show = false;
+                }
+            }
+            
+            row.style.display = show ? '' : 'none';
+        });
+    };
+    
+    searchInput.addEventListener('input', applyFilters);
+    issueFilter.addEventListener('change', applyFilters);
+}
+
+// Show canonical details
+function showCanonicalDetails(pageUrl) {
+    if (!reportData || !reportData.pages) return;
+    
+    const page = reportData.pages.find(p => p.url === pageUrl);
+    if (!page) return;
+    
+    const modal = document.getElementById('pageModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalTitle || !modalBody) return;
+    
+    const canonicalUrl = page.canonical_url || 'Not set';
+    const hasCanonical = !!page.canonical_url;
+    
+    modalTitle.textContent = 'Canonical Link Details';
+    modalBody.innerHTML = `
+        <div class="canonical-details-modal">
+            <h3>Page Information</h3>
+            <table class="details-table">
+                <tr>
+                    <th>Page URL:</th>
+                    <td><a href="${page.url}" target="_blank">${page.url}</a></td>
+                </tr>
+                <tr>
+                    <th>Page Title:</th>
+                    <td>${escapeHtml(page.title || 'Untitled')}</td>
+                </tr>
+                <tr>
+                    <th>Canonical URL:</th>
+                    <td>${hasCanonical ? `<a href="${canonicalUrl}" target="_blank">${canonicalUrl}</a>` : '<span class="text-muted">Not set</span>'}</td>
+                </tr>
+                <tr>
+                    <th>Status:</th>
+                    <td>${hasCanonical ? '<span class="badge badge-success">Has Canonical</span>' : '<span class="badge badge-danger">Missing</span>'}</td>
+                </tr>
+            </table>
+            ${hasCanonical ? `
+                <div class="canonical-analysis" style="margin-top: 20px;">
+                    <h4>Analysis</h4>
+                    <ul>
+                        ${canonicalUrl === page.url ? '<li class="text-info">✓ Canonical is self-referencing (this is correct)</li>' : ''}
+                        ${canonicalUrl !== page.url ? '<li class="text-warning">⚠ Canonical points to a different page</li>' : ''}
+                        ${canonicalUrl.startsWith('http') ? '<li class="text-success">✓ Canonical uses absolute URL</li>' : '<li class="text-warning">⚠ Canonical uses relative URL (should be absolute)</li>'}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    modal.style.display = 'block';
 }
 
 // Display Advanced SEO Audit section

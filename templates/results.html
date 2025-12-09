@@ -159,6 +159,9 @@
                 <button class="tab-btn" onclick="showSection('advanced-seo')">
                     <i class="fas fa-clipboard-check"></i> Advanced SEO Audit
                 </button>
+                <button class="tab-btn" onclick="showSection('canonical-links')">
+                    <i class="fas fa-link"></i> Canonical Links
+                </button>
                 <button class="tab-btn" onclick="showSection('dom-analysis')">
                     <i class="fas fa-sitemap"></i> DOM Analysis
                 </button>
@@ -314,8 +317,8 @@
                         <!-- Will be populated by JavaScript -->
                     </div>
                     
-                    <div class="section-actions" style="margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
-                        <input type="text" id="externalSearchInput" placeholder="Search external links..." class="search-box" style="flex: 1; min-width: 200px;">
+                    <div class="section-actions external-links-filters">
+                        <input type="text" id="externalSearchInput" placeholder="Search external links..." class="search-box">
                         <select id="externalPageFilter" class="filter-select">
                             <option value="all">All Pages</option>
                         </select>
@@ -711,6 +714,19 @@
                 </div>
             </section>
 
+            <!-- Orphan Pages Section -->
+            <section id="orphan-pages-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-unlink"></i> Orphan Pages</h2>
+                        <span class="badge badge-warning" id="orphanPagesCount">0 found</span>
+                    </div>
+                    <div id="orphanPagesContainer">
+                        <p class="loading">Analyzing orphan pages...</p>
+                    </div>
+                </div>
+            </section>
+
             <!-- Page Power Section -->
             <section id="page-power-section" class="content-section">
                 <div class="card">
@@ -759,6 +775,113 @@
                     </div>
                     <div id="skippedPagesContainer">
                         <p class="loading">Loading skipped pages...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Canonical Links Analysis Section -->
+            <section id="canonical-links-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-link"></i> Canonical Links Analysis</h2>
+                        <div class="section-actions">
+                            <input type="text" id="canonicalSearchInput" placeholder="Search pages or canonical URLs..." class="search-box">
+                            <select id="canonicalIssueFilter" class="filter-select">
+                                <option value="all">All Pages</option>
+                                <option value="missing">Missing Canonical</option>
+                                <option value="self-reference">Self-Referencing</option>
+                                <option value="different-page">Points to Different Page</option>
+                                <option value="external">Points to External Domain</option>
+                                <option value="relative">Relative URL</option>
+                                <option value="duplicate-canonical">Duplicate Canonical</option>
+                                <option value="chain">Canonical Chain</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Canonical Statistics -->
+                    <div class="canonical-summary-stats" id="canonicalSummaryStats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalPagesWithCanonical">0</div>
+                            <div class="stat-label">With Canonical</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="missingCanonicalCount">0</div>
+                            <div class="stat-label">Missing Canonical</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="selfReferenceCount">0</div>
+                            <div class="stat-label">Self-Referencing</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="differentPageCount">0</div>
+                            <div class="stat-label">Points to Different Page</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="duplicateCanonicalCount">0</div>
+                            <div class="stat-label">Duplicate Canonicals</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="canonicalChainsCount">0</div>
+                            <div class="stat-label">Canonical Chains</div>
+                        </div>
+                    </div>
+                    
+                    <!-- All Canonical Links Table -->
+                    <div class="table-container" style="margin-top: 20px;">
+                        <table id="canonicalLinksTable">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Page Title</th>
+                                    <th>Canonical URL</th>
+                                    <th>Status</th>
+                                    <th>Issues</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="canonicalLinksTableBody">
+                                <tr>
+                                    <td colspan="6" class="loading">Analyzing canonical links...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Detailed Issue Sections -->
+                    <div class="canonical-issues-grid" style="margin-top: 30px;">
+                        <div class="canonical-issue-column">
+                            <h3><i class="fas fa-exclamation-circle"></i> Missing Canonical Tags</h3>
+                            <div id="missingCanonicalContainer">
+                                <p class="loading">Analyzing...</p>
+                            </div>
+                        </div>
+                        <div class="canonical-issue-column">
+                            <h3><i class="fas fa-exchange-alt"></i> Canonical Chains</h3>
+                            <div id="canonicalChainsContainer">
+                                <p class="loading">Analyzing...</p>
+                            </div>
+                        </div>
+                        <div class="canonical-issue-column">
+                            <h3><i class="fas fa-copy"></i> Duplicate Canonicals</h3>
+                            <div id="duplicateCanonicalsContainer">
+                                <p class="loading">Analyzing...</p>
+                            </div>
+                        </div>
+                        <div class="canonical-issue-column">
+                            <h3><i class="fas fa-external-link-alt"></i> External Canonicals</h3>
+                            <div id="externalCanonicalsContainer">
+                                <p class="loading">Analyzing...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recommendations -->
+                    <div class="canonical-recommendations" style="margin-top: 30px;">
+                        <h3><i class="fas fa-lightbulb"></i> Canonical Links Best Practices</h3>
+                        <div id="canonicalRecommendationsContainer">
+                            <p class="loading">Generating recommendations...</p>
+                        </div>
                     </div>
                 </div>
             </section>

@@ -18,7 +18,7 @@ import argparse
 import math
 import re
 from typing import Dict, List, Set, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 
 import scrapy
@@ -791,52 +791,166 @@ class ReportGenerator:
         
         print(f"✓ Sitemap saved to: {sitemap_path}")
     
+    def _normalize_url_for_orphan(self, url: str) -> str:
+        """
+        Normalize URL for orphan page detection (matches spider normalization).
+        Removes trailing slashes, converts to lowercase, removes fragments.
+        
+        Args:
+            url: URL to normalize
+            
+        Returns:
+            Normalized URL or empty string if invalid
+        """
+        if not url:
+            return ''
+        
+        try:
+            parsed = urlparse(url)
+            
+            # Check if it's a valid HTTP/HTTPS URL
+            if parsed.scheme not in ['http', 'https']:
+                return ''
+            
+            # Normalize path: remove trailing slash (except for root)
+            path = parsed.path.rstrip('/')
+            if not path:
+                path = ''  # Empty path for root
+            
+            # Reconstruct URL (lowercase scheme and netloc, remove fragment)
+            normalized = urlunparse((
+                parsed.scheme.lower(),
+                parsed.netloc.lower(),
+                path,
+                parsed.params,
+                parsed.query,
+                ''  # Remove fragment
+            ))
+            
+            return normalized
+        except Exception:
+            return ''
+    
     def _detect_orphan_pages(self, items: List[dict]) -> List[str]:
         """
         Detect orphan pages - pages that have no internal links pointing to them.
+        Uses proper URL normalization to handle variations (trailing slashes, etc.).
         
         Args:
             items: List of crawled page items
             
         Returns:
-            List of orphan page URLs
+            List of orphan page URLs (normalized)
         """
         if not items:
             return []
         
-        # Collect all URLs that are linked to
-        linked_urls = set()
-        all_urls = set()
+        # Normalize all URLs and collect them
+        all_urls_normalized = {}  # normalized -> original
+        linked_urls_normalized = set()
         
+        # Find homepage/start URL (to exclude from orphan detection)
+        homepage_normalized = None
         for item in items:
-            url = item.get('url')
+            url = item.get('url', '')
             if url:
-                all_urls.add(url)
+                normalized = self._normalize_url_for_orphan(url)
+                if normalized:
+                    all_urls_normalized[normalized] = url
+                    
+                    # Check if this is homepage (path is empty or just '/')
+                    parsed = urlparse(normalized)
+                    if parsed.path == '' or parsed.path == '/':
+                        homepage_normalized = normalized
+        
+        # If no homepage found, use the first URL as start URL
+        if not homepage_normalized and all_urls_normalized:
+            homepage_normalized = list(all_urls_normalized.keys())[0]
+        
+        # Collect all internal links (normalized)
+        for item in items:
+            internal_links = item.get('internal_links', [])
             
-            # Add all internal links (handle both string and dict formats)
-            for link in item.get('internal_links', []):
+            for link in internal_links:
                 # Extract URL from dict format or use string directly
+                link_url = ''
                 if isinstance(link, dict):
                     link_url = link.get('url', '')
-                    if link_url:
-                        linked_urls.add(link_url)
                 elif isinstance(link, str):
-                    linked_urls.add(link)
+                    link_url = link
                 else:
-                    # Fallback: convert to string
                     try:
-                        linked_urls.add(str(link))
+                        link_url = str(link)
                     except (TypeError, ValueError):
-                        pass
+                        continue
+                
+                if link_url:
+                    normalized_link = self._normalize_url_for_orphan(link_url)
+                    if normalized_link:
+                        linked_urls_normalized.add(normalized_link)
         
         # Orphan pages are pages that exist but are never linked to
-        # (except the start page which might not be linked to)
+        # (excluding the homepage/start URL)
         orphan_pages = []
-        for url in all_urls:
-            if url not in linked_urls:
-                orphan_pages.append(url)
+        for normalized_url, original_url in all_urls_normalized.items():
+            # Skip homepage
+            if normalized_url == homepage_normalized:
+                continue
+            
+            # Check if this URL is linked to (using normalized comparison)
+            if normalized_url not in linked_urls_normalized:
+                # Double-check: also check if any variation of this URL is linked
+                # (e.g., with/without trailing slash)
+                is_linked = False
+                for linked_url in linked_urls_normalized:
+                    # Check if URLs match (accounting for variations)
+                    if self._urls_match(normalized_url, linked_url):
+                        is_linked = True
+                        break
+                
+                if not is_linked:
+                    orphan_pages.append(original_url)  # Return original URL
         
         return orphan_pages
+    
+    def _urls_match(self, url1: str, url2: str) -> bool:
+        """
+        Check if two normalized URLs match (accounting for minor variations).
+        
+        Args:
+            url1: First URL (normalized)
+            url2: Second URL (normalized)
+            
+        Returns:
+            True if URLs match
+        """
+        if url1 == url2:
+            return True
+        
+        # Parse both URLs
+        try:
+            parsed1 = urlparse(url1)
+            parsed2 = urlparse(url2)
+            
+            # Compare scheme, netloc, and path (ignore query params and fragments)
+            if (parsed1.scheme == parsed2.scheme and 
+                parsed1.netloc == parsed2.netloc):
+                
+                path1 = parsed1.path.rstrip('/')
+                path2 = parsed2.path.rstrip('/')
+                
+                # If both paths are empty after stripping, they're both root
+                if not path1 and not path2:
+                    return True
+                
+                # Compare paths
+                if path1 == path2:
+                    return True
+        
+        except Exception:
+            pass
+        
+        return False
     
     def _calculate_content_quality(self, page: Dict) -> Dict:
         """
