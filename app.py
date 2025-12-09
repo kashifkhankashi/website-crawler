@@ -14,10 +14,19 @@ from urllib.parse import urlparse
 from flask import Flask, render_template, request, jsonify, send_file, session
 from flask_socketio import SocketIO, emit
 import uuid
+import sys
 
 from crawl import CrawlerRunner
 
 app = Flask(__name__)
+
+# Detect if running as executable and pre-load threading driver
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller executable - pre-import threading driver
+    try:
+        import engineio.async_drivers.threading
+    except ImportError:
+        pass
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -41,13 +50,71 @@ keyword_research_jobs = {}
 keyword_research_lock = threading.Lock()
 
 # Configure SocketIO for Vercel (serverless-friendly)
-socketio = SocketIO(
-    app, 
-    cors_allowed_origins="*",
-    async_mode='threading',  # Use threading mode for better serverless compatibility
-    logger=False,
-    engineio_logger=False
-)
+# Make SocketIO optional - app will work without real-time updates if SocketIO fails
+is_executable = getattr(sys, 'frozen', False)
+socketio = None
+socketio_available = False
+
+# Try to initialize SocketIO - if it fails, app continues without real-time features
+try:
+    if is_executable:
+        # Pre-load threading driver for executables
+        try:
+            import engineio.async_drivers.threading
+        except ImportError:
+            pass
+        
+        # Try threading mode for executables
+        try:
+            socketio = SocketIO(
+                app, 
+                cors_allowed_origins="*",
+                async_mode='threading',
+                logger=False,
+                engineio_logger=False
+            )
+            socketio_available = True
+        except (ValueError, Exception):
+            # Threading mode failed, try without specifying mode
+            try:
+                socketio = SocketIO(
+                    app, 
+                    cors_allowed_origins="*",
+                    logger=False,
+                    engineio_logger=False
+                )
+                socketio_available = True
+            except Exception:
+                pass
+    else:
+        # Development mode - try auto-detection
+        socketio = SocketIO(
+            app, 
+            cors_allowed_origins="*",
+            logger=False,
+            engineio_logger=False
+        )
+        socketio_available = True
+except Exception as e:
+    print(f"Warning: SocketIO initialization failed: {e}")
+    print("App will continue without real-time progress updates.")
+    print("Progress can still be checked via status polling.")
+
+# Create dummy SocketIO object if initialization failed
+if socketio is None:
+    class DummySocketIO:
+        """Dummy SocketIO object when real SocketIO is unavailable."""
+        def emit(self, event, data=None, room=None, namespace=None, callback=None, **kwargs):
+            """Silently ignore emit calls when SocketIO is unavailable."""
+            pass
+        
+        def run(self, app, debug=False, host='0.0.0.0', port=5000, **kwargs):
+            """Fallback to regular Flask run when SocketIO is unavailable."""
+            app.run(debug=debug, host=host, port=port, **kwargs)
+    
+    socketio = DummySocketIO()
+    socketio_available = False
+    print("Using fallback mode - real-time updates disabled.")
 
 # Store active crawls (in-memory, but also persisted to disk for Vercel)
 active_crawls: Dict[str, dict] = {}
@@ -966,6 +1033,61 @@ def keyword_search():
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 
+@app.route('/api/schema-analysis/<job_id>')
+@login_required
+def get_schema_analysis(job_id: str):
+    """Analyze schema markup from crawl results."""
+    try:
+        # Load crawl results
+        json_path = None
+        base_output = app.config['UPLOAD_FOLDER']
+        
+        # Try to find the JSON report
+        possible_paths = [
+            os.path.join(base_output, job_id, 'report.json'),
+            os.path.join(base_output, 'report.json'),
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                json_path = path
+                break
+        
+        if not json_path or not os.path.exists(json_path):
+            return jsonify({'error': 'Crawl results not found. Please run a crawl first.'}), 404
+        
+        # Load crawl data
+        with open(json_path, 'r', encoding='utf-8') as f:
+            crawl_data = json.load(f)
+        
+        # Check if crawl data has pages
+        if not crawl_data.get('pages'):
+            return jsonify({'error': 'No pages found in crawl results. Please run a crawl first.'}), 400
+        
+        # Analyze schemas
+        try:
+            from schema_analyzer import SchemaAnalyzer
+            analyzer = SchemaAnalyzer()
+            analysis_results = analyzer.analyze_crawl_results(crawl_data)
+            
+            return jsonify(analysis_results)
+        except ImportError as e:
+            return jsonify({'error': f'Schema analyzer module not found: {str(e)}'}), 500
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Error analyzing schemas: {str(e)}'}), 500
+        
+    except FileNotFoundError:
+        return jsonify({'error': 'Crawl results file not found. Please run a crawl first.'}), 404
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Invalid JSON in crawl results: {str(e)}'}), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Error loading crawl results: {str(e)}'}), 500
+
+
 @app.route('/api/export-competitor-analysis', methods=['POST'])
 @login_required
 def export_competitor_analysis():
@@ -1150,7 +1272,10 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     # Output directory is already created in app initialization
-    pass
+    import sys
+    
+    # Detect if running as executable
+    is_executable = getattr(sys, 'frozen', False)
     
     # Run Flask app with SocketIO
     print("\n" + "="*60)
@@ -1160,5 +1285,19 @@ if __name__ == '__main__':
     print("Open your browser and go to: http://localhost:5000")
     print("\nPress Ctrl+C to stop the server\n")
     
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    try:
+        # Use debug=False for executable, True for development
+        if socketio_available:
+            socketio.run(app, debug=not is_executable, host='0.0.0.0', port=5000)
+        else:
+            # Fallback to regular Flask run if SocketIO is unavailable
+            app.run(debug=not is_executable, host='0.0.0.0', port=5000)
+    except Exception as e:
+        print(f"\nERROR: Failed to start server: {e}")
+        import traceback
+        traceback.print_exc()
+        if is_executable:
+            print("\nPress Enter to exit...")
+            input()
+        sys.exit(1)
 

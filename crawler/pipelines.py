@@ -171,8 +171,13 @@ class DuplicateDetectionPipeline:
         # Use advanced analyzer if available (MinHash+LSH similar to Siteliner)
         if self.advanced_analyzer:
             try:
-                # Process page with advanced analyzer
+                # Process page with advanced analyzer (includes tags/categories in content)
                 self.advanced_analyzer.process_page(url, text_content, html_content)
+                
+                # Update stored content with normalized version that includes tags/categories
+                # The analyzer's process_page method now includes tags/categories in normalization
+                normalized_with_tags = self.advanced_analyzer.url_to_normalized_text.get(url, text_content)
+                self.url_to_content[url] = normalized_with_tags
                 
                 # Find candidates using LSH
                 signature = self.advanced_analyzer.url_to_signature.get(url)
@@ -181,9 +186,12 @@ class DuplicateDetectionPipeline:
                     
                     # Calculate similarity for candidates
                     similarity_scores = {}
-                    text1 = text_content
+                    text1 = normalized_with_tags  # Use normalized text with tags/categories
                     for candidate_url in candidates:
-                        text2 = self.url_to_content.get(candidate_url, '')
+                        # Get normalized text (with tags/categories) for candidate
+                        text2 = self.advanced_analyzer.url_to_normalized_text.get(candidate_url, '')
+                        if not text2:
+                            text2 = self.url_to_content.get(candidate_url, '')
                         if text2:
                             similarity = self.advanced_analyzer.calculate_similarity(
                                 text1, text2, url, candidate_url

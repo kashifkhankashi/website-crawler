@@ -18,7 +18,7 @@ import argparse
 import math
 import re
 from typing import Dict, List, Set, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 
 import scrapy
@@ -48,6 +48,14 @@ try:
     ADVANCED_ANALYZERS_AVAILABLE = True
 except ImportError:
     ADVANCED_ANALYZERS_AVAILABLE = False
+
+# Import professional SEO auditor
+try:
+    from professional_seo_audit import ProfessionalSEOAuditor
+    PROFESSIONAL_AUDIT_AVAILABLE = True
+except ImportError:
+    PROFESSIONAL_AUDIT_AVAILABLE = False
+    ProfessionalSEOAuditor = None
 
 # Import page power analyzer
 try:
@@ -177,16 +185,20 @@ class ReportGenerator:
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
     
-    def generate_reports(self, items: List[dict], broken_links: Dict[str, dict]):
+    def generate_reports(self, items: List[dict], broken_links: Dict[str, dict], skipped_pages: List[dict] = None):
         """
         Generate JSON and CSV reports.
         
         Args:
             items: List of crawled page dictionaries
             broken_links: Dictionary of broken link statuses
+            skipped_pages: List of skipped pages with reasons
         """
+        if skipped_pages is None:
+            skipped_pages = []
+        
         # Generate JSON report
-        self._generate_json_report(items, broken_links)
+        self._generate_json_report(items, broken_links, skipped_pages)
         
         # Generate CSV summary
         self._generate_csv_summary(items, broken_links)
@@ -194,11 +206,15 @@ class ReportGenerator:
         # Generate sitemap
         self._generate_sitemap(items)
     
-    def _generate_json_report(self, items: List[dict], broken_links: Dict[str, dict]):
+    def _generate_json_report(self, items: List[dict], broken_links: Dict[str, dict], skipped_pages: List[dict] = None):
         """Generate detailed JSON report, including keyword and image analysis for SEO."""
+        if skipped_pages is None:
+            skipped_pages = []
+        
         report_data = {
             'crawl_date': datetime.now().isoformat(),
             'total_pages': len(items),
+            'skipped_pages': skipped_pages,  # Add skipped pages to report
             # robots.txt and technical SEO info can be extended later
             'pages': []
         }
@@ -239,6 +255,25 @@ class ReportGenerator:
         # Detect orphan pages (pages with no internal links pointing to them)
         orphan_pages = self._detect_orphan_pages(items)
         report_data['orphan_pages'] = orphan_pages
+        
+        # Run Professional SEO Audit (comprehensive analysis)
+        professional_audit = {}
+        if PROFESSIONAL_AUDIT_AVAILABLE and ProfessionalSEOAuditor and items:
+            try:
+                # Get start URL from first item
+                start_url = items[0].get('url', '') if items else ''
+                if start_url:
+                    parsed = urlparse(start_url)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}"
+                    
+                    auditor = ProfessionalSEOAuditor(base_url)
+                    professional_audit = auditor.analyze_all(items)
+                    report_data['professional_audit'] = professional_audit
+            except Exception as e:
+                print(f"Warning: Professional SEO Audit failed: {e}")
+                import traceback
+                traceback.print_exc()
+                professional_audit = {}
         
         # Calculate Page Power (prominence based on internal linking)
         page_powers = {}
@@ -380,6 +415,46 @@ class ReportGenerator:
                 print(f"Warning: Site SEO score calculation failed: {e}")
                 import traceback
                 traceback.print_exc()
+        
+        # Analyze external links (deep crawling)
+        try:
+            from external_link_analyzer import ExternalLinkAnalyzer
+            print("Analyzing external links with deep crawling...")
+            external_analyzer = ExternalLinkAnalyzer(timeout=10)
+            
+            # Collect all external links with their data
+            external_links_to_analyze = []
+            for item in items:
+                for ext_link in item.get('external_links', []):
+                    if isinstance(ext_link, dict):
+                        external_links_to_analyze.append(ext_link)
+                    else:
+                        external_links_to_analyze.append({'url': ext_link})
+            
+            # Analyze external links (with progress callback)
+            def progress_callback(progress, message):
+                if progress % 20 == 0:
+                    print(f"External link analysis: {progress}% - {message}")
+            
+            analyzed_links = external_analyzer.analyze_batch(
+                external_links_to_analyze[:100],  # Limit to first 100 for performance
+                progress_callback
+            )
+            
+            # Add analyzed external links to report
+            report_data['external_links_analysis'] = {
+                'total_analyzed': len(analyzed_links),
+                'analyzed_links': analyzed_links,
+                'summary': self._summarize_external_links(analyzed_links)
+            }
+            
+            print(f"✓ Analyzed {len(analyzed_links)} external links")
+        except ImportError:
+            print("Warning: External link analyzer not available. Install requests library.")
+        except Exception as e:
+            print(f"Warning: External link analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Save JSON report
         json_path = os.path.join(self.output_dir, 'report.json')
@@ -639,6 +714,44 @@ class ReportGenerator:
             'duplicate_images': duplicate_images,
         }
     
+    def _summarize_external_links(self, analyzed_links: List[dict]) -> dict:
+        """Summarize external links analysis."""
+        if not analyzed_links:
+            return {}
+        
+        total = len(analyzed_links)
+        accessible = sum(1 for link in analyzed_links if link.get('accessible', False))
+        has_ssl = sum(1 for link in analyzed_links if link.get('has_ssl', False))
+        
+        # Count by category
+        categories = {}
+        for link in analyzed_links:
+            category = link.get('category', 'Other')
+            categories[category] = categories.get(category, 0) + 1
+        
+        # Count by link type
+        link_types = {}
+        for link in analyzed_links:
+            link_type = link.get('link_type', 'Follow')
+            link_types[link_type] = link_types.get(link_type, 0) + 1
+        
+        # Count by quality
+        quality_levels = {}
+        for link in analyzed_links:
+            quality = link.get('quality_score', {}).get('level', 'Unknown')
+            quality_levels[quality] = quality_levels.get(quality, 0) + 1
+        
+        return {
+            'total': total,
+            'accessible': accessible,
+            'inaccessible': total - accessible,
+            'with_ssl': has_ssl,
+            'without_ssl': total - has_ssl,
+            'by_category': categories,
+            'by_link_type': link_types,
+            'by_quality': quality_levels
+        }
+    
     def _generate_csv_summary(self, items: List[dict], broken_links: Dict[str, dict]):
         """Generate CSV summary report."""
         csv_path = os.path.join(self.output_dir, 'summary.csv')
@@ -705,52 +818,166 @@ class ReportGenerator:
         
         print(f"✓ Sitemap saved to: {sitemap_path}")
     
+    def _normalize_url_for_orphan(self, url: str) -> str:
+        """
+        Normalize URL for orphan page detection (matches spider normalization).
+        Removes trailing slashes, converts to lowercase, removes fragments.
+        
+        Args:
+            url: URL to normalize
+            
+        Returns:
+            Normalized URL or empty string if invalid
+        """
+        if not url:
+            return ''
+        
+        try:
+            parsed = urlparse(url)
+            
+            # Check if it's a valid HTTP/HTTPS URL
+            if parsed.scheme not in ['http', 'https']:
+                return ''
+            
+            # Normalize path: remove trailing slash (except for root)
+            path = parsed.path.rstrip('/')
+            if not path:
+                path = ''  # Empty path for root
+            
+            # Reconstruct URL (lowercase scheme and netloc, remove fragment)
+            normalized = urlunparse((
+                parsed.scheme.lower(),
+                parsed.netloc.lower(),
+                path,
+                parsed.params,
+                parsed.query,
+                ''  # Remove fragment
+            ))
+            
+            return normalized
+        except Exception:
+            return ''
+    
     def _detect_orphan_pages(self, items: List[dict]) -> List[str]:
         """
         Detect orphan pages - pages that have no internal links pointing to them.
+        Uses proper URL normalization to handle variations (trailing slashes, etc.).
         
         Args:
             items: List of crawled page items
             
         Returns:
-            List of orphan page URLs
+            List of orphan page URLs (normalized)
         """
         if not items:
             return []
         
-        # Collect all URLs that are linked to
-        linked_urls = set()
-        all_urls = set()
+        # Normalize all URLs and collect them
+        all_urls_normalized = {}  # normalized -> original
+        linked_urls_normalized = set()
         
+        # Find homepage/start URL (to exclude from orphan detection)
+        homepage_normalized = None
         for item in items:
-            url = item.get('url')
+            url = item.get('url', '')
             if url:
-                all_urls.add(url)
+                normalized = self._normalize_url_for_orphan(url)
+                if normalized:
+                    all_urls_normalized[normalized] = url
+                    
+                    # Check if this is homepage (path is empty or just '/')
+                    parsed = urlparse(normalized)
+                    if parsed.path == '' or parsed.path == '/':
+                        homepage_normalized = normalized
+        
+        # If no homepage found, use the first URL as start URL
+        if not homepage_normalized and all_urls_normalized:
+            homepage_normalized = list(all_urls_normalized.keys())[0]
+        
+        # Collect all internal links (normalized)
+        for item in items:
+            internal_links = item.get('internal_links', [])
             
-            # Add all internal links (handle both string and dict formats)
-            for link in item.get('internal_links', []):
+            for link in internal_links:
                 # Extract URL from dict format or use string directly
+                link_url = ''
                 if isinstance(link, dict):
                     link_url = link.get('url', '')
-                    if link_url:
-                        linked_urls.add(link_url)
                 elif isinstance(link, str):
-                    linked_urls.add(link)
+                    link_url = link
                 else:
-                    # Fallback: convert to string
                     try:
-                        linked_urls.add(str(link))
+                        link_url = str(link)
                     except (TypeError, ValueError):
-                        pass
+                        continue
+                
+                if link_url:
+                    normalized_link = self._normalize_url_for_orphan(link_url)
+                    if normalized_link:
+                        linked_urls_normalized.add(normalized_link)
         
         # Orphan pages are pages that exist but are never linked to
-        # (except the start page which might not be linked to)
+        # (excluding the homepage/start URL)
         orphan_pages = []
-        for url in all_urls:
-            if url not in linked_urls:
-                orphan_pages.append(url)
+        for normalized_url, original_url in all_urls_normalized.items():
+            # Skip homepage
+            if normalized_url == homepage_normalized:
+                continue
+            
+            # Check if this URL is linked to (using normalized comparison)
+            if normalized_url not in linked_urls_normalized:
+                # Double-check: also check if any variation of this URL is linked
+                # (e.g., with/without trailing slash)
+                is_linked = False
+                for linked_url in linked_urls_normalized:
+                    # Check if URLs match (accounting for variations)
+                    if self._urls_match(normalized_url, linked_url):
+                        is_linked = True
+                        break
+                
+                if not is_linked:
+                    orphan_pages.append(original_url)  # Return original URL
         
         return orphan_pages
+    
+    def _urls_match(self, url1: str, url2: str) -> bool:
+        """
+        Check if two normalized URLs match (accounting for minor variations).
+        
+        Args:
+            url1: First URL (normalized)
+            url2: Second URL (normalized)
+            
+        Returns:
+            True if URLs match
+        """
+        if url1 == url2:
+            return True
+        
+        # Parse both URLs
+        try:
+            parsed1 = urlparse(url1)
+            parsed2 = urlparse(url2)
+            
+            # Compare scheme, netloc, and path (ignore query params and fragments)
+            if (parsed1.scheme == parsed2.scheme and 
+                parsed1.netloc == parsed2.netloc):
+                
+                path1 = parsed1.path.rstrip('/')
+                path2 = parsed2.path.rstrip('/')
+                
+                # If both paths are empty after stripping, they're both root
+                if not path1 and not path2:
+                    return True
+                
+                # Compare paths
+                if path1 == path2:
+                    return True
+        
+        except Exception:
+            pass
+        
+        return False
     
     def _calculate_content_quality(self, page: Dict) -> Dict:
         """
@@ -873,6 +1100,7 @@ class CrawlerRunner:
         self.job_id = job_id
         self.crawled_items: List[dict] = []
         self.all_internal_links: Set[str] = set()
+        self.skipped_pages: List[dict] = []  # Track skipped pages
     
     def run(self):
         """Run the complete crawling and reporting process."""
@@ -895,7 +1123,7 @@ class CrawlerRunner:
         print("Generating reports...")
         print("="*60 + "\n")
         report_generator = ReportGenerator(self.output_dir)
-        report_generator.generate_reports(self.crawled_items, broken_links)
+        report_generator.generate_reports(self.crawled_items, broken_links, self.skipped_pages)
         
         # Print summary
         self._print_summary(broken_links)
@@ -1036,10 +1264,26 @@ class ProgressPipeline:
 
 # Configure and run
 settings = get_project_settings()
-# Add progress pipeline at the end
+# Add progress pipeline and skipped pages pipeline
 original_pipelines = settings.get("ITEM_PIPELINES", {{}})
 settings["ITEM_PIPELINES"] = original_pipelines.copy()
 settings["ITEM_PIPELINES"]["__main__.ProgressPipeline"] = 1000
+settings["ITEM_PIPELINES"]["__main__.SkippedPagesPipeline"] = 999
+
+# Custom signal handler to capture skipped pages
+skipped_pages_list = []
+
+class SkippedPagesPipeline:
+    def open_spider(self, spider):
+        self.spider = spider
+    
+    def close_spider(self, spider):
+        global skipped_pages_list
+        if hasattr(spider, 'skipped_pages'):
+            skipped_pages_list = spider.skipped_pages
+
+# Add pipeline to settings
+settings["ITEM_PIPELINES"]["__main__.SkippedPagesPipeline"] = 999
 
 process = CrawlerProcess(settings)
 process.crawl(SiteSpider, start_url="{self.start_url}", max_depth={self.max_depth})
@@ -1049,9 +1293,27 @@ process.start()
 items = ItemStoragePipeline.get_collected_items()
 links = ItemStoragePipeline.get_collected_links()
 
+# Get skipped pages (captured by pipeline)
+skipped_pages = skipped_pages_list
+
+# Calculate links_in for each skipped page
+all_internal_links_list = []
+for item in items:
+    for link in item.get("internal_links", []):
+        if isinstance(link, dict):
+            all_internal_links_list.append(link.get("url", ""))
+        else:
+            all_internal_links_list.append(link)
+
+# Count how many links point to each skipped page
+for skipped in skipped_pages:
+    skipped_url = skipped.get("url", "")
+    links_in = sum(1 for link_url in all_internal_links_list if link_url == skipped_url)
+    skipped["links_in"] = links_in
+
 # Save to temp file
 with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf-8") as f:
-    json.dump({{"items": items, "links": list(links)}}, f, ensure_ascii=False)
+    json.dump({{"items": items, "links": list(links), "skipped_pages": skipped_pages}}, f, ensure_ascii=False)
 '''
                 
                 with open(script_file, 'w', encoding='utf-8') as f:
@@ -1079,6 +1341,24 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
                         # Ensure all_internal_links only contains strings
                         self.all_internal_links = {link if isinstance(link, str) else (link.get('url', '') if isinstance(link, dict) else str(link))
                                                   for link in links_data if link}
+                        # Get skipped pages from results and calculate links_in
+                        skipped_pages_raw = results.get('skipped_pages', [])
+                        # Calculate links_in for each skipped page
+                        all_internal_links_list = []
+                        for item in self.crawled_items:
+                            for link in item.get("internal_links", []):
+                                if isinstance(link, dict):
+                                    all_internal_links_list.append(link.get("url", ""))
+                                else:
+                                    all_internal_links_list.append(link)
+                        
+                        # Count how many links point to each skipped page
+                        for skipped in skipped_pages_raw:
+                            skipped_url = skipped.get("url", "")
+                            links_in = sum(1 for link_url in all_internal_links_list if link_url == skipped_url)
+                            skipped["links_in"] = links_in
+                        
+                        self.skipped_pages = skipped_pages_raw
                 else:
                     raise Exception("Crawl completed but results file not found")
                     
@@ -1103,6 +1383,21 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
                         pass
         else:
             # Use CrawlerProcess for command line usage
+            # Create a pipeline to capture skipped pages
+            skipped_pages_list = []
+            
+            class SkippedPagesPipeline:
+                def open_spider(self, spider):
+                    self.spider = spider
+                
+                def close_spider(self, spider):
+                    nonlocal skipped_pages_list
+                    if hasattr(spider, 'skipped_pages'):
+                        skipped_pages_list = spider.skipped_pages
+            
+            # Add pipeline to settings
+            settings["ITEM_PIPELINES"]["__main__.SkippedPagesPipeline"] = 999
+            
             process = CrawlerProcess(settings)
             process.crawl(SiteSpider, start_url=self.start_url, max_depth=self.max_depth)
             process.start()
@@ -1113,6 +1408,23 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
             # Ensure all_internal_links only contains strings (filter out any dicts that might have slipped through)
             self.all_internal_links = {link if isinstance(link, str) else (link.get('url', '') if isinstance(link, dict) else str(link)) 
                                       for link in collected_links if link}
+            
+            # Get skipped pages and calculate links_in
+            self.skipped_pages = skipped_pages_list
+            # Calculate links_in for each skipped page
+            all_internal_links_list = []
+            for item in self.crawled_items:
+                for link in item.get("internal_links", []):
+                    if isinstance(link, dict):
+                        all_internal_links_list.append(link.get("url", ""))
+                    else:
+                        all_internal_links_list.append(link)
+            
+            # Count how many links point to each skipped page
+            for skipped in self.skipped_pages:
+                skipped_url = skipped.get("url", "")
+                links_in = sum(1 for link_url in all_internal_links_list if link_url == skipped_url)
+                skipped["links_in"] = links_in
     
     def _check_broken_links(self) -> Dict[str, dict]:
         """Check all internal links for broken status."""

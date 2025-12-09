@@ -4,6 +4,7 @@ Similar to Siteliner.com - Advanced similarity detection using MinHash and LSH.
 
 Features:
 - Advanced text extraction (removes HTML, scripts, styles, navigation, boilerplate)
+- INCLUDES tags and categories in duplicate detection (similar to Siteliner's approach)
 - Text normalization (lowercase, stopwords removal, whitespace compression)
 - Shingling (n-grams) for text fingerprinting
 - MinHash (Minhashing) for efficient similarity estimation
@@ -16,11 +17,14 @@ Techniques used (similar to Siteliner):
 2. MinHash: Create compact signatures that preserve Jaccard similarity
 3. LSH: Group similar documents into buckets for fast comparison
 4. Multiple hash functions: Use multiple permutations for better accuracy
+5. Tags/Categories inclusion: Extracts and includes tags/categories in content analysis
+   (from visible links, meta tags, structured data) - matches Siteliner's behavior
 """
 import re
 import hashlib
 import random
 import struct
+import json
 from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 import textdistance
@@ -277,9 +281,132 @@ class DuplicateContentAnalyzer:
         
         return text
     
+    def extract_tags_and_categories(self, html_content: str) -> tuple:
+        """
+        Extract tags and categories from HTML content.
+        Similar to Siteliner's approach - includes tags/categories in duplicate detection.
+        
+        Sources:
+        1. Visible tag/category links on the page (WordPress-style)
+        2. Meta tags (keywords, article:tag, etc.)
+        3. Structured data (Schema.org, JSON-LD)
+        4. URL patterns (e.g., /tag/, /category/)
+        
+        Args:
+            html_content: Raw HTML content
+            
+        Returns:
+            Tuple of (tags_text, categories_text) - normalized text strings
+        """
+        from bs4 import BeautifulSoup
+        
+        if not html_content:
+            return ("", "")
+        
+        soup = BeautifulSoup(html_content, 'lxml')
+        tags = set()
+        categories = set()
+        
+        # 1. Extract from visible tag/category links (WordPress, Joomla, etc.)
+        # Common patterns: .tag, .tags, .post-tags, .category, .categories, .post-categories
+        tag_selectors = [
+            '.tag', '.tags', '.post-tags', '.entry-tags', '.article-tags',
+            '[rel="tag"]', 'a[href*="/tag/"]', 'a[href*="/tags/"]'
+        ]
+        category_selectors = [
+            '.category', '.categories', '.post-categories', '.entry-categories',
+            '.article-categories', 'a[href*="/category/"]', 'a[href*="/categories/"]',
+            'a[href*="/cat/"]'
+        ]
+        
+        for selector in tag_selectors:
+            for elem in soup.select(selector):
+                text = elem.get_text(strip=True)
+                if text and len(text) < 100:  # Reasonable tag length
+                    tags.add(text.lower())
+        
+        for selector in category_selectors:
+            for elem in soup.select(selector):
+                text = elem.get_text(strip=True)
+                if text and len(text) < 100:  # Reasonable category length
+                    categories.add(text.lower())
+        
+        # 2. Extract from meta tags
+        # Meta keywords (legacy but still used)
+        meta_keywords = soup.find('meta', attrs={'name': 'keywords'})
+        if meta_keywords and meta_keywords.get('content'):
+            keywords = meta_keywords.get('content', '').lower()
+            # Split by comma and add to tags
+            for kw in re.split(r'[,;]', keywords):
+                kw = kw.strip()
+                if kw and len(kw) < 100:
+                    tags.add(kw)
+        
+        # Article tags (Open Graph, etc.)
+        for meta in soup.find_all('meta', attrs={'property': re.compile(r'article:tag', re.I)}):
+            tag = meta.get('content', '').strip().lower()
+            if tag and len(tag) < 100:
+                tags.add(tag)
+        
+        # 3. Extract from structured data (JSON-LD, Schema.org)
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict):
+                    data = [data]
+                elif not isinstance(data, list):
+                    continue
+                
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    
+                    # Extract keywords/tags from various schema types
+                    if 'keywords' in item:
+                        keywords = item['keywords']
+                        if isinstance(keywords, str):
+                            for kw in re.split(r'[,;]', keywords.lower()):
+                                kw = kw.strip()
+                                if kw and len(kw) < 100:
+                                    tags.add(kw)
+                        elif isinstance(keywords, list):
+                            for kw in keywords:
+                                if isinstance(kw, str) and len(kw) < 100:
+                                    tags.add(kw.lower().strip())
+                    
+                    # Extract articleSection (category)
+                    if 'articleSection' in item:
+                        section = item['articleSection']
+                        if isinstance(section, str) and len(section) < 100:
+                            categories.add(section.lower().strip())
+                        elif isinstance(section, list):
+                            for cat in section:
+                                if isinstance(cat, str) and len(cat) < 100:
+                                    categories.add(cat.lower().strip())
+                    
+                    # Extract about (topics/categories)
+                    if 'about' in item:
+                        about = item['about']
+                        if isinstance(about, dict) and 'name' in about:
+                            name = about['name']
+                            if isinstance(name, str) and len(name) < 100:
+                                categories.add(name.lower().strip())
+            except (json.JSONDecodeError, KeyError, AttributeError):
+                continue
+        
+        # 4. Extract from URL patterns (if URL is available in context)
+        # This would be handled separately if URL is passed
+        
+        # Convert sets to normalized text strings
+        tags_text = ' '.join(sorted(tags)) if tags else ""
+        categories_text = ' '.join(sorted(categories)) if categories else ""
+        
+        return (tags_text, categories_text)
+    
     def extract_visible_text(self, html_content: str, text_content: str = None) -> str:
         """
         Extract visible text from HTML, removing boilerplate.
+        INCLUDES tags and categories in the extracted text (similar to Siteliner).
         
         This is a simplified version - in production, you might want to use
         more sophisticated libraries like readability-lxml or trafilatura.
@@ -289,11 +416,16 @@ class DuplicateContentAnalyzer:
             text_content: Pre-extracted text content (optional)
             
         Returns:
-            Clean visible text
+            Clean visible text INCLUDING tags and categories
         """
+        # Extract tags and categories first
+        tags_text, categories_text = self.extract_tags_and_categories(html_content)
+        
         if text_content:
-            # Use pre-extracted text if available
-            return text_content
+            # Use pre-extracted text if available, but append tags/categories
+            # This ensures tags/categories are included in duplicate detection
+            combined = f"{text_content} {tags_text} {categories_text}".strip()
+            return combined
         
         # Basic extraction - remove script, style, nav, header, footer
         # This is a fallback if text_content is not provided
@@ -322,7 +454,11 @@ class DuplicateContentAnalyzer:
         # Extract text
         text = main_content.get_text(separator=' ', strip=True) if main_content else ""
         
-        return text
+        # Append tags and categories to the text content
+        # This ensures they're included in duplicate detection (similar to Siteliner)
+        combined = f"{text} {tags_text} {categories_text}".strip()
+        
+        return combined
     
     def create_shingles(self, text: str) -> Set[str]:
         """
@@ -355,19 +491,30 @@ class DuplicateContentAnalyzer:
         Process a page and store normalized content.
         Uses MinHash+LSH for efficient similarity detection (similar to Siteliner).
         
+        INCLUDES tags and categories in duplicate detection (similar to Siteliner's approach).
+        
         Args:
             url: Page URL
             text_content: Extracted text content
-            html_content: Raw HTML content (optional, for re-extraction)
+            html_content: Raw HTML content (optional, for re-extraction and tag/category extraction)
             
         Returns:
             Content hash for exact duplicate detection
         """
-        # Extract visible text if needed
+        # Extract visible text if needed (this now includes tags/categories)
         if not text_content and html_content:
             text_content = self.extract_visible_text(html_content)
+        elif text_content and html_content:
+            # If we have both, extract tags/categories and append them
+            # This ensures tags/categories are always included in duplicate detection
+            tags_text, categories_text = self.extract_tags_and_categories(html_content)
+            text_content = f"{text_content} {tags_text} {categories_text}".strip()
+        elif text_content and not html_content:
+            # If we only have text_content, we can't extract tags/categories
+            # This is okay - the text_content should already include visible tags/categories
+            pass
         
-        # Normalize text
+        # Normalize text (tags and categories are now part of the text)
         normalized = self.normalize_text(text_content, remove_stopwords=True)
         
         # Store normalized text
@@ -380,7 +527,7 @@ class DuplicateContentAnalyzer:
         
         # MinHash+LSH processing
         if self.use_minhash:
-            # Create shingles
+            # Create shingles (includes tags/categories in the shingles)
             shingles = self.create_shingles(normalized)
             self.url_to_shingles[url] = shingles
             

@@ -84,6 +84,12 @@ async function loadResults() {
 // Display all sections
 function displayAllSections(data) {
     try {
+        displaySummaryReport(data);
+    } catch (e) {
+        console.error('Error displaying summary report:', e);
+    }
+    
+    try {
         displayOverview(data);
     } catch (e) {
         console.error('Error displaying overview:', e);
@@ -156,6 +162,18 @@ function displayAllSections(data) {
     }
     
     try {
+        displayCanonicalLinks(data);
+    } catch (e) {
+        console.error('Error displaying canonical links:', e);
+    }
+    
+    try {
+        displayProfessionalAudit(data);
+    } catch (e) {
+        console.error('Error displaying professional audit:', e);
+    }
+    
+    try {
         displayPagePower(data);
     } catch (e) {
         console.error('Error displaying page power:', e);
@@ -163,6 +181,7 @@ function displayAllSections(data) {
     
     try {
         displayAdvancedSEO(data);
+        displaySkippedPages(data);
     } catch (e) {
         console.error('Error displaying advanced SEO:', e);
     }
@@ -172,6 +191,8 @@ function displayAllSections(data) {
     } catch (e) {
         console.error('Error displaying DOM analysis:', e);
     }
+    
+    // Schema analyzer will load when section is shown
     
     try {
         updateSeoScoreSummary(data);
@@ -278,85 +299,559 @@ function displayMetaSeo(data) {
 
 // Image analyzer section
 function displayImageAnalyzer(data) {
-    const missingAltContainer = document.getElementById('missingAltContainer');
-    const largeImagesContainer = document.getElementById('largeImagesContainer');
-    const duplicateImagesContainer = document.getElementById('duplicateImagesContainer');
-
-    if (!missingAltContainer || !largeImagesContainer || !duplicateImagesContainer) return;
-
-    const analysis = data.image_analysis || {};
-
-    // Missing ALT text
-    const missingAlt = analysis.missing_alt || [];
-    if (missingAlt.length === 0) {
-        missingAltContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No images with missing ALT text were found.</p></div>';
-    } else {
-        let html = '<ul class="image-list">';
-        missingAlt.slice(0, 200).forEach(item => {
-            html += `
-                <li>
-                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a></div>
-                    <div><strong>Page:</strong> <a href="${item.page_url}" target="_blank">${item.page_title || item.page_url}</a></div>
-                </li>
-            `;
-        });
-        if (missingAlt.length > 200) {
-            html += `<li><em>... and ${missingAlt.length - 200} more</em></li>`;
+    if (!data || !data.pages) return;
+    
+    // Collect all images from all pages with full details
+    const allImages = [];
+    const imageMap = new Map(); // src -> image data
+    const imageUsage = new Map(); // src -> array of pages using it
+    
+    data.pages.forEach(page => {
+        if (page.images && Array.isArray(page.images)) {
+            page.images.forEach(img => {
+                const src = img.src || img.url || '';
+                if (!src) return;
+                
+                // Get image format from URL
+                const format = getImageFormat(src);
+                
+                // Check for issues
+                const alt = (img.alt || '').trim();
+                const hasAlt = alt.length > 0;
+                const width = img.width || null;
+                const height = img.height || null;
+                const hasDimensions = width && height;
+                
+                // Detect low quality (small dimensions)
+                const isLowQuality = hasDimensions && (width < 200 || height < 200);
+                
+                // Get size from performance analysis if available
+                let sizeBytes = 0;
+                let sizeKb = 0;
+                if (page.performance_analysis && page.performance_analysis.heavy_images) {
+                    const heavyImg = page.performance_analysis.heavy_images.find(hi => hi.url === src);
+                    if (heavyImg) {
+                        sizeBytes = heavyImg.size_bytes || 0;
+                        sizeKb = heavyImg.size_kb || 0;
+                    }
+                }
+                
+                // Check if large (over 300KB)
+                const isLarge = sizeBytes > 300 * 1024 || sizeKb > 300;
+                
+                // Track image usage
+                if (!imageUsage.has(src)) {
+                    imageUsage.set(src, []);
+                }
+                imageUsage.get(src).push({
+                    url: page.url,
+                    title: page.title || page.url
+                });
+                
+                // Create image entry
+                const imageEntry = {
+                    src: src,
+                    alt: alt,
+                    hasAlt: hasAlt,
+                    width: width,
+                    height: height,
+                    hasDimensions: hasDimensions,
+                    isLowQuality: isLowQuality,
+                    format: format,
+                    sizeBytes: sizeBytes,
+                    sizeKb: sizeKb,
+                    isLarge: isLarge,
+                    pageUrl: page.url,
+                    pageTitle: page.title || page.url,
+                    issues: []
+                };
+                
+                // Collect issues
+                if (!hasAlt) imageEntry.issues.push('missing-alt');
+                if (isLarge) imageEntry.issues.push('large');
+                if (isLowQuality) imageEntry.issues.push('low-quality');
+                if (!hasDimensions) imageEntry.issues.push('no-dimensions');
+                
+                allImages.push(imageEntry);
+                
+                // Store in map for duplicate detection
+                if (!imageMap.has(src)) {
+                    imageMap.set(src, imageEntry);
+                }
+            });
         }
-        html += '</ul>';
-        missingAltContainer.innerHTML = html;
-    }
+    });
+    
+    // Mark duplicates
+    imageUsage.forEach((pages, src) => {
+        if (pages.length > 1 && imageMap.has(src)) {
+            imageMap.get(src).isDuplicate = true;
+            imageMap.get(src).usageCount = pages.length;
+            imageMap.get(src).issues.push('duplicate');
+        }
+    });
+    
+    // Update all images to mark duplicates
+    allImages.forEach(img => {
+        if (imageUsage.get(img.src) && imageUsage.get(img.src).length > 1) {
+            img.isDuplicate = true;
+            img.usageCount = imageUsage.get(img.src).length;
+            if (!img.issues.includes('duplicate')) {
+                img.issues.push('duplicate');
+            }
+        }
+    });
+    
+    // Calculate statistics
+    const stats = {
+        total: allImages.length,
+        missingAlt: allImages.filter(img => !img.hasAlt).length,
+        large: allImages.filter(img => img.isLarge).length,
+        lowQuality: allImages.filter(img => img.isLowQuality).length,
+        duplicate: allImages.filter(img => img.isDuplicate).length,
+        noDimensions: allImages.filter(img => !img.hasDimensions).length
+    };
+    
+    // Update summary stats
+    updateImageSummaryStats(stats);
+    
+    // Display all images table
+    displayAllImagesTable(allImages, data);
+    
+    // Display detailed sections
+    displayMissingAltImages(allImages);
+    displayLargeImages(allImages);
+    displayLowQualityImages(allImages);
+    displayDuplicateImages(allImages, imageUsage);
+    
+    // Setup filters
+    setupImageFilters(allImages, data);
+}
 
-    // Large images
-    const largeImages = analysis.large_images || [];
-    if (largeImages.length === 0) {
-        largeImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large images detected (based on Content-Length).</p></div>';
-    } else {
-        let html = '<ul class="image-list">';
-        largeImages.forEach(item => {
-            const sizeKb = (item.size_bytes / 1024).toFixed(1);
-            html += `
-                <li>
-                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a> (${sizeKb} KB)</div>
-                    <div><strong>Used on:</strong>
-                        <ul>
-                            ${item.pages.slice(0, 5).map(p => `
-                                <li><a href="${p.page_url}" target="_blank">${p.page_title || p.page_url}</a></li>
-                            `).join('')}
-                            ${item.pages.length > 5 ? `<li><em>... and ${item.pages.length - 5} more pages</em></li>` : ''}
-                        </ul>
-                    </div>
-                </li>
-            `;
-        });
-        html += '</ul>';
-        largeImagesContainer.innerHTML = html;
-    }
+// Helper function to detect image format
+function getImageFormat(url) {
+    if (!url) return 'unknown';
+    const lower = url.toLowerCase();
+    if (lower.includes('.webp') || lower.includes('webp')) return 'WebP';
+    if (lower.includes('.jpg') || lower.includes('.jpeg') || lower.includes('jpeg')) return 'JPEG';
+    if (lower.includes('.png')) return 'PNG';
+    if (lower.includes('.gif')) return 'GIF';
+    if (lower.includes('.svg')) return 'SVG';
+    if (lower.includes('.avif')) return 'AVIF';
+    return 'unknown';
+}
 
-    // Duplicate images
-    const duplicateImages = analysis.duplicate_images || [];
-    if (duplicateImages.length === 0) {
-        duplicateImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate image usage detected across pages.</p></div>';
-    } else {
-        let html = '<ul class="image-list">';
-        duplicateImages.forEach(item => {
-            html += `
-                <li>
-                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a></div>
-                    <div><strong>Used on ${item.pages.length} pages:</strong>
-                        <ul>
-                            ${item.pages.slice(0, 8).map(p => `
-                                <li><a href="${p.page_url}" target="_blank">${p.page_title || p.page_url}</a></li>
-                            `).join('')}
-                            ${item.pages.length > 8 ? `<li><em>... and ${item.pages.length - 8} more pages</em></li>` : ''}
-                        </ul>
-                    </div>
-                </li>
-            `;
-        });
-        html += '</ul>';
-        duplicateImagesContainer.innerHTML = html;
+// Update summary statistics
+function updateImageSummaryStats(stats) {
+    const elements = {
+        totalImagesCount: document.getElementById('totalImagesCount'),
+        missingAltCount: document.getElementById('missingAltCount'),
+        largeImagesCount: document.getElementById('largeImagesCount'),
+        lowQualityCount: document.getElementById('lowQualityCount'),
+        duplicateImagesCount: document.getElementById('duplicateImagesCount')
+    };
+    
+    if (elements.totalImagesCount) elements.totalImagesCount.textContent = stats.total;
+    if (elements.missingAltCount) elements.missingAltCount.textContent = stats.missingAlt;
+    if (elements.largeImagesCount) elements.largeImagesCount.textContent = stats.large;
+    if (elements.lowQualityCount) elements.lowQualityCount.textContent = stats.lowQuality;
+    if (elements.duplicateImagesCount) elements.duplicateImagesCount.textContent = stats.duplicate;
+}
+
+// Display all images in a comprehensive table
+function displayAllImagesTable(allImages, data) {
+    const tbody = document.getElementById('allImagesTableBody');
+    if (!tbody) return;
+    
+    if (allImages.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No images found on any pages.</td></tr>';
+        return;
     }
+    
+    // Remove duplicates (show each unique image once)
+    const uniqueImages = [];
+    const seen = new Set();
+    
+    allImages.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueImages.push(img);
+        }
+    });
+    
+    let html = '';
+    uniqueImages.forEach(img => {
+        const dimensions = img.hasDimensions ? `${img.width} × ${img.height}` : 'N/A';
+        const size = img.sizeKb > 0 ? `${img.sizeKb.toFixed(1)} KB` : 'Unknown';
+        const altText = img.alt || '<em class="text-muted">No ALT text</em>';
+        const issues = img.issues.map(issue => {
+            const labels = {
+                'missing-alt': '<span class="badge badge-warning">Missing ALT</span>',
+                'large': '<span class="badge badge-danger">Large</span>',
+                'low-quality': '<span class="badge badge-info">Low Quality</span>',
+                'duplicate': `<span class="badge badge-secondary">Duplicate (${img.usageCount || 1})</span>`,
+                'no-dimensions': '<span class="badge badge-warning">No Dimensions</span>'
+            };
+            return labels[issue] || '';
+        }).join(' ');
+        
+        html += `
+            <tr data-src="${img.src}" data-issues="${img.issues.join(',')}" data-page="${img.pageUrl}">
+                <td>
+                    <img src="${img.src}" alt="${img.alt || ''}" 
+                         style="max-width: 80px; max-height: 80px; object-fit: contain; border: 1px solid #ddd; border-radius: 4px;"
+                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'80\' height=\'80\'%3E%3Crect width=\'80\' height=\'80\' fill=\'%23f0f0f0\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%23999\' font-size=\'12\'%3EImage%3C/text%3E%3C/svg%3E';">
+                </td>
+                <td>
+                    <a href="${img.src}" target="_blank" title="${img.src}">
+                        ${truncateUrl(img.src, 50)}
+                    </a>
+                </td>
+                <td>
+                    <a href="${img.pageUrl}" target="_blank" title="${img.pageTitle}">
+                        ${truncateText(img.pageTitle, 40)}
+                    </a>
+                </td>
+                <td>${dimensions}</td>
+                <td>${size}</td>
+                <td><span class="badge">${img.format}</span></td>
+                <td>${altText}</td>
+                <td>${issues || '<span class="text-success">✓ OK</span>'}</td>
+                <td>
+                    <button class="action-btn action-btn-view" onclick="showImageDetails('${img.src}', '${img.pageUrl}')" title="View Details">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Display missing ALT images
+function displayMissingAltImages(allImages) {
+    const container = document.getElementById('missingAltContainer');
+    if (!container) return;
+    
+    const missingAlt = allImages.filter(img => !img.hasAlt);
+    const uniqueMissing = [];
+    const seen = new Set();
+    
+    missingAlt.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueMissing.push(img);
+        }
+    });
+    
+    if (uniqueMissing.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>All images have ALT text!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="image-issues-list">';
+    uniqueMissing.slice(0, 50).forEach(img => {
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${img.src}" alt="" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${img.src}" target="_blank">${truncateUrl(img.src, 60)}</a></div>
+                    <div class="image-page"><strong>Page:</strong> <a href="${img.pageUrl}" target="_blank">${truncateText(img.pageTitle, 50)}</a></div>
+                    ${img.hasDimensions ? `<div class="image-dimensions">Dimensions: ${img.width} × ${img.height}</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    if (uniqueMissing.length > 50) {
+        html += `<div class="more-items">... and ${uniqueMissing.length - 50} more images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display large images
+function displayLargeImages(allImages) {
+    const container = document.getElementById('largeImagesContainer');
+    if (!container) return;
+    
+    const large = allImages.filter(img => img.isLarge);
+    const uniqueLarge = [];
+    const seen = new Set();
+    
+    large.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueLarge.push(img);
+        }
+    });
+    
+    if (uniqueLarge.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large images detected!</p></div>';
+        return;
+    }
+    
+    // Sort by size descending
+    uniqueLarge.sort((a, b) => (b.sizeKb || 0) - (a.sizeKb || 0));
+    
+    let html = '<div class="image-issues-list">';
+    uniqueLarge.slice(0, 50).forEach(img => {
+        const size = img.sizeKb > 0 ? `${img.sizeKb.toFixed(1)} KB` : 'Unknown size';
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${img.src}" alt="${img.alt || ''}" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${img.src}" target="_blank">${truncateUrl(img.src, 60)}</a></div>
+                    <div class="image-size"><strong>Size:</strong> ${size}</div>
+                    <div class="image-page"><strong>Page:</strong> <a href="${img.pageUrl}" target="_blank">${truncateText(img.pageTitle, 50)}</a></div>
+                    ${img.hasDimensions ? `<div class="image-dimensions">Dimensions: ${img.width} × ${img.height}</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    if (uniqueLarge.length > 50) {
+        html += `<div class="more-items">... and ${uniqueLarge.length - 50} more images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display low quality images
+function displayLowQualityImages(allImages) {
+    const container = document.getElementById('lowQualityImagesContainer');
+    if (!container) return;
+    
+    const lowQuality = allImages.filter(img => img.isLowQuality);
+    const uniqueLowQuality = [];
+    const seen = new Set();
+    
+    lowQuality.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueLowQuality.push(img);
+        }
+    });
+    
+    if (uniqueLowQuality.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No low quality images detected!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="image-issues-list">';
+    uniqueLowQuality.slice(0, 50).forEach(img => {
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${img.src}" alt="${img.alt || ''}" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${img.src}" target="_blank">${truncateUrl(img.src, 60)}</a></div>
+                    <div class="image-dimensions"><strong>Dimensions:</strong> ${img.width} × ${img.height} (Low resolution)</div>
+                    <div class="image-page"><strong>Page:</strong> <a href="${img.pageUrl}" target="_blank">${truncateText(img.pageTitle, 50)}</a></div>
+                    <div class="image-recommendation"><i class="fas fa-info-circle"></i> Consider using higher resolution images for better quality</div>
+                </div>
+            </div>
+        `;
+    });
+    if (uniqueLowQuality.length > 50) {
+        html += `<div class="more-items">... and ${uniqueLowQuality.length - 50} more images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display duplicate images
+function displayDuplicateImages(allImages, imageUsage) {
+    const container = document.getElementById('duplicateImagesContainer');
+    if (!container) return;
+    
+    const duplicates = [];
+    imageUsage.forEach((pages, src) => {
+        if (pages.length > 1) {
+            const img = allImages.find(i => i.src === src);
+            if (img) {
+                duplicates.push({
+                    src: src,
+                    usageCount: pages.length,
+                    pages: pages,
+                    img: img
+                });
+            }
+        }
+    });
+    
+    if (duplicates.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate images detected!</p></div>';
+        return;
+    }
+    
+    // Sort by usage count descending
+    duplicates.sort((a, b) => b.usageCount - a.usageCount);
+    
+    let html = '<div class="image-issues-list">';
+    duplicates.slice(0, 30).forEach(dup => {
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${dup.src}" alt="${dup.img.alt || ''}" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${dup.src}" target="_blank">${truncateUrl(dup.src, 60)}</a></div>
+                    <div class="image-usage-count"><strong>Used on ${dup.usageCount} pages:</strong></div>
+                    <div class="image-pages-list">
+                        ${dup.pages.slice(0, 5).map(p => `
+                            <div class="page-link-item">
+                                <a href="${p.url}" target="_blank">${truncateText(p.title, 40)}</a>
+                            </div>
+                        `).join('')}
+                        ${dup.pages.length > 5 ? `<div class="more-pages">... and ${dup.pages.length - 5} more pages</div>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    if (duplicates.length > 30) {
+        html += `<div class="more-items">... and ${duplicates.length - 30} more duplicate images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Setup image filters
+function setupImageFilters(allImages, data) {
+    const searchInput = document.getElementById('imageSearchInput');
+    const pageFilter = document.getElementById('imagePageFilter');
+    const issueFilter = document.getElementById('imageIssueFilter');
+    const tbody = document.getElementById('allImagesTableBody');
+    
+    if (!searchInput || !pageFilter || !issueFilter || !tbody) return;
+    
+    // Populate page filter
+    if (data.pages) {
+        data.pages.forEach(page => {
+            const option = document.createElement('option');
+            option.value = page.url;
+            option.textContent = page.title || page.url;
+            pageFilter.appendChild(option);
+        });
+    }
+    
+    const applyFilters = () => {
+        const searchTerm = (searchInput.value || '').toLowerCase();
+        const selectedPage = pageFilter.value;
+        const selectedIssue = issueFilter.value;
+        
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            let show = true;
+            
+            // Search filter
+            if (searchTerm) {
+                const src = (row.dataset.src || '').toLowerCase();
+                const page = (row.dataset.page || '').toLowerCase();
+                if (!src.includes(searchTerm) && !page.includes(searchTerm)) {
+                    show = false;
+                }
+            }
+            
+            // Page filter
+            if (selectedPage !== 'all' && row.dataset.page !== selectedPage) {
+                show = false;
+            }
+            
+            // Issue filter
+            if (selectedIssue !== 'all') {
+                const issues = (row.dataset.issues || '').split(',');
+                if (!issues.includes(selectedIssue)) {
+                    show = false;
+                }
+            }
+            
+            row.style.display = show ? '' : 'none';
+        });
+    };
+    
+    searchInput.addEventListener('input', applyFilters);
+    pageFilter.addEventListener('change', applyFilters);
+    issueFilter.addEventListener('change', applyFilters);
+}
+
+// Show image details in modal
+function showImageDetails(imageSrc, pageUrl) {
+    // Find the page data
+    if (!reportData || !reportData.pages) return;
+    
+    const page = reportData.pages.find(p => p.url === pageUrl);
+    if (!page) return;
+    
+    const image = (page.images || []).find(img => (img.src || img.url) === imageSrc);
+    if (!image) return;
+    
+    const modal = document.getElementById('pageModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalTitle || !modalBody) return;
+    
+    const format = getImageFormat(imageSrc);
+    const dimensions = (image.width && image.height) ? `${image.width} × ${image.height}` : 'Not specified';
+    const alt = image.alt || 'No ALT text';
+    
+    modalTitle.textContent = 'Image Details';
+    modalBody.innerHTML = `
+        <div class="image-details-modal">
+            <div class="image-preview-large">
+                <img src="${imageSrc}" alt="${alt}" style="max-width: 100%; max-height: 400px; border-radius: 8px;">
+            </div>
+            <div class="image-details-info">
+                <h3>Image Information</h3>
+                <table class="details-table">
+                    <tr>
+                        <th>Image URL:</th>
+                        <td><a href="${imageSrc}" target="_blank">${imageSrc}</a></td>
+                    </tr>
+                    <tr>
+                        <th>Page:</th>
+                        <td><a href="${pageUrl}" target="_blank">${page.title || pageUrl}</a></td>
+                    </tr>
+                    <tr>
+                        <th>Format:</th>
+                        <td>${format}</td>
+                    </tr>
+                    <tr>
+                        <th>Dimensions:</th>
+                        <td>${dimensions}</td>
+                    </tr>
+                    <tr>
+                        <th>ALT Text:</th>
+                        <td>${alt}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'block';
+}
+
+// Helper function to truncate URLs
+function truncateUrl(url, maxLength) {
+    if (url.length <= maxLength) return url;
+    return url.substring(0, maxLength - 3) + '...';
+}
+
+// Helper function to truncate text
+function truncateText(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
 }
 
 // Display keyword analysis section
@@ -654,6 +1149,658 @@ function setupKeywordSearch(data) {
             runSearch();
         }
     });
+}
+
+// Display Summary Report (Siteliner-style)
+function displaySummaryReport(data) {
+    if (!data || !data.pages) return;
+    
+    const pages = data.pages;
+    const totalPages = pages.length;
+    
+    // Update timestamp
+    const timestampEl = document.getElementById('summaryReportTimestamp');
+    if (timestampEl) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+        const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        timestampEl.textContent = `Siteliner scanned ${totalPages} pages of ${totalPages} found on your site. ${timeStr} ${dateStr}`;
+    }
+    
+    // Calculate Top Issues
+    displayTopIssues(data);
+    
+    // Calculate Page Breakdown
+    displayPageBreakdown(data);
+    
+    // Calculate Duplicate Content Breakdown
+    displayDuplicateContentBreakdown(data);
+    
+    // Calculate Site Comparison
+    displaySiteComparison(data);
+    
+    // Generate Recommendations
+    displayRecommendations(data);
+}
+
+// Display Top Issues
+function displayTopIssues(data) {
+    const container = document.getElementById('topIssuesContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    
+    // Count issues
+    let duplicateContentCount = 0;
+    let brokenLinksCount = 0;
+    let missingMetaCount = 0;
+    let slowPagesCount = 0;
+    
+    pages.forEach(page => {
+        // Duplicate content
+        if (page.is_exact_duplicate || (page.similarity_scores && Object.keys(page.similarity_scores).length > 0)) {
+            const maxSimilarity = page.similarity_scores ? Math.max(...Object.values(page.similarity_scores)) : 100;
+            if (page.is_exact_duplicate || maxSimilarity >= 70) {
+                duplicateContentCount++;
+            }
+        }
+        
+        // Broken links
+        if (page.broken_links && page.broken_links.length > 0) {
+            brokenLinksCount += page.broken_links.length;
+        }
+        
+        // Missing meta
+        if (!page.title || page.title.length < 10 || !page.meta_description || page.meta_description.length < 50) {
+            missingMetaCount++;
+        }
+        
+        // Slow pages (if performance data available)
+        if (page.performance_analysis && page.performance_analysis.load_time > 3000) {
+            slowPagesCount++;
+        }
+    });
+    
+    const issues = [];
+    if (duplicateContentCount > 0) {
+        issues.push({
+            icon: 'fa-copy',
+            color: 'orange',
+            text: `A large amount of duplicate content was found.`,
+            count: duplicateContentCount,
+            link: 'duplicates'
+        });
+    }
+    if (brokenLinksCount > 0) {
+        issues.push({
+            icon: 'fa-unlink',
+            color: 'red',
+            text: `${brokenLinksCount} broken link${brokenLinksCount > 1 ? 's were' : ' was'} found.`,
+            count: brokenLinksCount,
+            link: 'broken-links'
+        });
+    }
+    if (missingMetaCount > 0) {
+        issues.push({
+            icon: 'fa-code',
+            color: 'yellow',
+            text: `${missingMetaCount} page${missingMetaCount > 1 ? 's have' : ' has'} missing or incomplete meta tags.`,
+            count: missingMetaCount,
+            link: 'meta-seo'
+        });
+    }
+    if (slowPagesCount > 0) {
+        issues.push({
+            icon: 'fa-tachometer-alt',
+            color: 'blue',
+            text: `${slowPagesCount} page${slowPagesCount > 1 ? 's are' : ' is'} loading slowly.`,
+            count: slowPagesCount,
+            link: 'performance'
+        });
+    }
+    
+    if (issues.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No major issues found! Your site looks good.</p></div>';
+        return;
+    }
+    
+    let html = '<div class="top-issues-list">';
+    issues.forEach(issue => {
+        html += `
+            <div class="issue-item" onclick="showSection('${issue.link}')">
+                <div class="issue-icon ${issue.color}">
+                    <i class="fas ${issue.icon}"></i>
+                </div>
+                <div class="issue-content">
+                    <div class="issue-text">${issue.text}</div>
+                    <div class="issue-count">${issue.count} ${issue.count > 1 ? 'issues' : 'issue'}</div>
+                </div>
+                <div class="issue-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display Page Breakdown
+function displayPageBreakdown(data) {
+    const container = document.getElementById('pageBreakdownContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    const skippedPages = data.skipped_pages || [];
+    
+    let normalPages = 0;
+    let skippedRedirect = 0;
+    let skippedNoindex = 0;
+    let skippedOther = 0;
+    let errorPages = 0;
+    
+    pages.forEach(page => {
+        if (page.status_code >= 400) {
+            errorPages++;
+        } else if (page.status_code >= 200 && page.status_code < 300) {
+            normalPages++;
+        }
+    });
+    
+    skippedPages.forEach(skipped => {
+        const reason = skipped.skip_reason || '';
+        if (reason.toLowerCase().includes('redirect')) {
+            skippedRedirect++;
+        } else if (reason.toLowerCase().includes('noindex')) {
+            skippedNoindex++;
+        } else {
+            skippedOther++;
+        }
+    });
+    
+    const breakdown = [
+        { label: 'Normal Pages', count: normalPages, color: 'green', link: 'overview' },
+        { label: 'Skipped, Redirect', count: skippedRedirect, color: 'yellow', link: 'advanced-seo' },
+        { label: 'Skipped, Noindex', count: skippedNoindex, color: 'orange', link: 'advanced-seo' },
+        { label: 'Skipped, Other', count: skippedOther, color: 'blue', link: 'advanced-seo' },
+        { label: 'Errors', count: errorPages, color: 'red', link: 'broken-links' }
+    ];
+    
+    let html = '<div class="page-breakdown-list">';
+    breakdown.forEach(item => {
+        html += `
+            <div class="breakdown-item" onclick="showSection('${item.link}')">
+                <div class="breakdown-label">${item.label}:</div>
+                <div class="breakdown-count ${item.color}">${item.count}</div>
+                <div class="breakdown-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display Duplicate Content Breakdown
+function displayDuplicateContentBreakdown(data) {
+    const container = document.getElementById('duplicateContentBreakdownContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    if (pages.length === 0) {
+        container.innerHTML = '<p>No pages to analyze.</p>';
+        return;
+    }
+    
+    // Calculate content percentages (Siteliner-style)
+    // Total words across all pages
+    let totalWords = 0;
+    pages.forEach(page => {
+        totalWords += page.word_count || 0;
+    });
+    
+    if (totalWords === 0) {
+        container.innerHTML = '<p>No content to analyze.</p>';
+        return;
+    }
+    
+    // Exact duplicates (same content hash)
+    const hashGroups = new Map();
+    pages.forEach(page => {
+        const hash = page.content_hash || '';
+        if (hash) {
+            if (!hashGroups.has(hash)) {
+                hashGroups.set(hash, []);
+            }
+            hashGroups.get(hash).push(page);
+        }
+    });
+    
+    let duplicateWords = 0;
+    hashGroups.forEach(group => {
+        if (group.length > 1) {
+            // All pages in this group are duplicates
+            // Count words from all but one (since they're duplicates)
+            const wordsPerPage = group[0].word_count || 0;
+            duplicateWords += wordsPerPage * (group.length - 1);
+        }
+    });
+    
+    // Common content (high similarity but not exact duplicate)
+    // This includes navigation, headers, footers, etc. that appear on multiple pages
+    let commonWords = 0;
+    const processedPairs = new Set();
+    
+    pages.forEach(page1 => {
+        if (page1.similarity_scores && Object.keys(page1.similarity_scores).length > 0) {
+            Object.entries(page1.similarity_scores).forEach(([url2, similarity]) => {
+                // Create a unique pair identifier
+                const pairKey = [page1.url, url2].sort().join('|');
+                if (processedPairs.has(pairKey)) return;
+                processedPairs.add(pairKey);
+                
+                // Only count if similarity is high (70-90%) but not exact duplicate
+                if (similarity >= 70 && similarity < 90 && !page1.is_exact_duplicate) {
+                    const page1Words = page1.word_count || 0;
+                    // Estimate common words based on similarity
+                    const estimatedCommon = page1Words * (similarity / 100) * 0.5; // 0.5 to avoid double counting
+                    commonWords += estimatedCommon;
+                }
+            });
+        }
+    });
+    
+    // Ensure we don't double-count
+    commonWords = Math.max(0, commonWords - duplicateWords);
+    
+    // Unique content is the remainder
+    const uniqueWords = totalWords - duplicateWords - commonWords;
+    
+    const duplicatePercent = (duplicateWords / totalWords) * 100;
+    const commonPercent = (commonWords / totalWords) * 100;
+    const uniquePercent = (uniqueWords / totalWords) * 100;
+    
+    let html = `
+        <div class="duplicate-content-breakdown-grid">
+            <div class="duplicate-stat" onclick="showSection('duplicates')">
+                <div class="stat-value orange">${duplicatePercent.toFixed(0)}%</div>
+                <div class="stat-label">Duplicate Content</div>
+            </div>
+            <div class="duplicate-stat" onclick="showSection('similarity')">
+                <div class="stat-value yellow">${commonPercent.toFixed(0)}%</div>
+                <div class="stat-label">Common Content</div>
+            </div>
+            <div class="duplicate-stat">
+                <div class="stat-value green">${uniquePercent.toFixed(0)}%</div>
+                <div class="stat-label">Unique Content</div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Industry benchmarks for percentile calculations
+const BENCHMARKS = {
+    avgPageSize: { median: 156 * 1024 }, // 156KB in bytes
+    avgPageLoadTime: { median: 651 }, // milliseconds
+    wordsPerPage: { median: 846 },
+    textToHtmlRatio: { median: 3 }, // percentage
+    duplicateContent: { median: 17 }, // percentage
+    commonContent: { median: 30 }, // percentage
+    internalLinksPerPage: { median: 24 },
+    externalLinksPerPage: { median: 5 },
+    totalLinksPerPage: { median: 30 },
+    inboundLinksPerPage: { median: 20 }
+};
+
+// Calculate percentile
+function calculatePercentile(value, median, higherIsBetter = false) {
+    if (median === 0) return 50;
+    
+    const ratio = value / median;
+    if (higherIsBetter) {
+        // For metrics where higher is better (like words per page)
+        if (ratio >= 1) {
+            return Math.min(100, 50 + (ratio - 1) * 25);
+        } else {
+            return Math.max(0, 50 - (1 - ratio) * 50);
+        }
+    } else {
+        // For metrics where lower is better (like page size, load time, duplicate content)
+        if (ratio <= 1) {
+            return Math.min(100, 50 + (1 - ratio) * 25);
+        } else {
+            return Math.max(0, 50 - (ratio - 1) * 50);
+        }
+    }
+}
+
+// Display Site Comparison
+function displaySiteComparison(data) {
+    const container = document.getElementById('siteComparisonContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    if (pages.length === 0) {
+        container.innerHTML = '<p>No data available for comparison.</p>';
+        return;
+    }
+    
+    // Calculate metrics
+    let totalPageSize = 0;
+    let totalLoadTime = 0;
+    let totalWords = 0;
+    let totalHtmlSize = 0;
+    let totalTextSize = 0;
+    let totalInternalLinks = 0;
+    let totalExternalLinks = 0;
+    let totalInboundLinks = 0;
+    
+    const inboundLinkCounts = new Map();
+    
+    pages.forEach(page => {
+        // Page size (estimate from HTML if available, otherwise use word count * 5 bytes)
+        const htmlSize = page.html_content ? page.html_content.length : (page.word_count || 0) * 5;
+        totalPageSize += htmlSize;
+        totalHtmlSize += htmlSize;
+        
+        // Load time (from performance analysis if available)
+        if (page.performance_analysis && page.performance_analysis.load_time) {
+            totalLoadTime += page.performance_analysis.load_time;
+        }
+        
+        // Word count
+        totalWords += page.word_count || 0;
+        
+        // Text size
+        if (page.text_content) {
+            totalTextSize += page.text_content.length;
+        }
+        
+        // Links
+        totalInternalLinks += (page.internal_links || []).length;
+        totalExternalLinks += (page.external_links || []).length;
+        
+        // Count inbound links
+        (page.internal_links || []).forEach(link => {
+            inboundLinkCounts.set(link, (inboundLinkCounts.get(link) || 0) + 1);
+        });
+    });
+    
+    totalInboundLinks = Array.from(inboundLinkCounts.values()).reduce((sum, count) => sum + count, 0);
+    
+    const avgPageSize = totalPageSize / pages.length;
+    const avgLoadTime = totalLoadTime / pages.length || 0;
+    const avgWords = totalWords / pages.length;
+    const textToHtmlRatio = totalHtmlSize > 0 ? (totalTextSize / totalHtmlSize) * 100 : 0;
+    const avgInternalLinks = totalInternalLinks / pages.length;
+    const avgExternalLinks = totalExternalLinks / pages.length;
+    const avgTotalLinks = (totalInternalLinks + totalExternalLinks) / pages.length;
+    const avgInboundLinks = totalInboundLinks / pages.length;
+    
+    // Calculate duplicate and common content percentages
+    const duplicatePercent = parseFloat(document.querySelector('.duplicate-stat .stat-value.orange')?.textContent || '0');
+    const commonPercent = parseFloat(document.querySelector('.duplicate-stat .stat-value.yellow')?.textContent || '0');
+    
+    // Calculate percentiles
+    const comparisons = [
+        {
+            label: 'Average Page Size',
+            value: (avgPageSize / 1024).toFixed(0) + 'Kb',
+            percentile: calculatePercentile(avgPageSize, BENCHMARKS.avgPageSize.median, false),
+            median: (BENCHMARKS.avgPageSize.median / 1024).toFixed(0) + 'Kb',
+            higherIsBetter: false
+        },
+        {
+            label: 'Average Page Load Time',
+            value: avgLoadTime > 0 ? avgLoadTime.toFixed(0) + 'ms' : 'N/A',
+            percentile: avgLoadTime > 0 ? calculatePercentile(avgLoadTime, BENCHMARKS.avgPageLoadTime.median, false) : 50,
+            median: BENCHMARKS.avgPageLoadTime.median + 'ms',
+            higherIsBetter: false
+        },
+        {
+            label: 'Number of Words per Page',
+            value: avgWords.toFixed(0),
+            percentile: calculatePercentile(avgWords, BENCHMARKS.wordsPerPage.median, true),
+            median: BENCHMARKS.wordsPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'Text to HTML Ratio',
+            value: textToHtmlRatio.toFixed(0) + '%',
+            percentile: calculatePercentile(textToHtmlRatio, BENCHMARKS.textToHtmlRatio.median, true),
+            median: BENCHMARKS.textToHtmlRatio.median + '%',
+            higherIsBetter: true
+        },
+        {
+            label: 'Duplicate Content',
+            value: duplicatePercent.toFixed(0) + '%',
+            percentile: calculatePercentile(duplicatePercent, BENCHMARKS.duplicateContent.median, false),
+            median: BENCHMARKS.duplicateContent.median + '%',
+            higherIsBetter: false
+        },
+        {
+            label: 'Common Content',
+            value: commonPercent.toFixed(0) + '%',
+            percentile: calculatePercentile(commonPercent, BENCHMARKS.commonContent.median, false),
+            median: BENCHMARKS.commonContent.median + '%',
+            higherIsBetter: false
+        },
+        {
+            label: 'Internal Links per Page',
+            value: avgInternalLinks.toFixed(0),
+            percentile: calculatePercentile(avgInternalLinks, BENCHMARKS.internalLinksPerPage.median, true),
+            median: BENCHMARKS.internalLinksPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'External Links per Page',
+            value: avgExternalLinks.toFixed(0),
+            percentile: calculatePercentile(avgExternalLinks, BENCHMARKS.externalLinksPerPage.median, true),
+            median: BENCHMARKS.externalLinksPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'Total Links per Page',
+            value: avgTotalLinks.toFixed(0),
+            percentile: calculatePercentile(avgTotalLinks, BENCHMARKS.totalLinksPerPage.median, true),
+            median: BENCHMARKS.totalLinksPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'Inbound Links per Page',
+            value: avgInboundLinks.toFixed(0),
+            percentile: calculatePercentile(avgInboundLinks, BENCHMARKS.inboundLinksPerPage.median, true),
+            median: BENCHMARKS.inboundLinksPerPage.median.toString(),
+            higherIsBetter: true
+        }
+    ];
+    
+    let html = '<div class="comparison-list">';
+    comparisons.forEach(comp => {
+        const percentileClass = comp.percentile >= 70 ? 'good' : comp.percentile >= 40 ? 'average' : 'poor';
+        const comparisonText = comp.higherIsBetter 
+            ? `The ${comp.label.toLowerCase()} for your site is ${comp.value}. The median for all other sites is ${comp.median}.`
+            : `The ${comp.label.toLowerCase()} for your site is ${comp.value}. The median for all other sites is ${comp.median}.`;
+        const percentileText = comp.higherIsBetter
+            ? `The ${comp.label.toLowerCase()} for your site is ${comp.percentile >= 50 ? 'more' : 'less'} than ${comp.percentile.toFixed(0)}% of all other sites.`
+            : `The ${comp.label.toLowerCase()} for your site is ${comp.percentile >= 50 ? 'longer' : 'shorter'} than ${comp.percentile.toFixed(0)}% of all other sites.`;
+        
+        html += `
+            <div class="comparison-item ${percentileClass}">
+                <div class="comparison-header">
+                    <span class="comparison-value">${comp.value}</span>
+                    <span class="comparison-percentile">${comp.percentile.toFixed(0)}${comp.percentile === 1 ? 'st' : comp.percentile === 2 ? 'nd' : comp.percentile === 3 ? 'rd' : 'th'} percentile</span>
+                </div>
+                <div class="comparison-label">${comp.label}</div>
+                <div class="comparison-description">${comparisonText}</div>
+                <div class="comparison-percentile-text">${percentileText}</div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display Recommendations
+function displayRecommendations(data) {
+    const container = document.getElementById('recommendationsContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    const recommendations = [];
+    
+    // Check for duplicate content
+    const duplicatePages = pages.filter(p => p.is_exact_duplicate || (p.similarity_scores && Object.keys(p.similarity_scores).length > 0));
+    if (duplicatePages.length > 0) {
+        recommendations.push({
+            issue: 'Duplicate Content',
+            severity: 'high',
+            description: `You have ${duplicatePages.length} page${duplicatePages.length > 1 ? 's' : ''} with duplicate or highly similar content.`,
+            fixes: [
+                'Use canonical tags to indicate the preferred version of duplicate pages',
+                'Rewrite duplicate content to make it unique and valuable',
+                'Consolidate similar pages into a single, comprehensive page',
+                'Remove unnecessary duplicate pages and redirect them to the original',
+                'Use 301 redirects for old duplicate URLs to the canonical version'
+            ]
+        });
+    }
+    
+    // Check for broken links
+    let totalBrokenLinks = 0;
+    pages.forEach(page => {
+        if (page.broken_links) {
+            totalBrokenLinks += page.broken_links.length;
+        }
+    });
+    if (totalBrokenLinks > 0) {
+        recommendations.push({
+            issue: 'Broken Links',
+            severity: 'high',
+            description: `You have ${totalBrokenLinks} broken link${totalBrokenLinks > 1 ? 's' : ''} on your site.`,
+            fixes: [
+                'Fix or update broken internal links to point to correct pages',
+                'Remove broken external links or replace them with working alternatives',
+                'Set up 301 redirects for moved or renamed pages',
+                'Regularly audit your links to catch broken links early',
+                'Use a link checker tool to monitor link health'
+            ]
+        });
+    }
+    
+    // Check for missing meta tags
+    const missingMetaPages = pages.filter(p => !p.title || p.title.length < 10 || !p.meta_description || p.meta_description.length < 50);
+    if (missingMetaPages.length > 0) {
+        recommendations.push({
+            issue: 'Missing or Incomplete Meta Tags',
+            severity: 'medium',
+            description: `${missingMetaPages.length} page${missingMetaPages.length > 1 ? 's have' : ' has'} missing or incomplete meta tags.`,
+            fixes: [
+                'Add unique, descriptive title tags (50-60 characters) to all pages',
+                'Write compelling meta descriptions (150-160 characters) for each page',
+                'Include relevant keywords naturally in titles and descriptions',
+                'Ensure each page has a unique title and description',
+                'Use title tags that accurately describe the page content'
+            ]
+        });
+    }
+    
+    // Check for slow pages
+    const slowPages = pages.filter(p => p.performance_analysis && p.performance_analysis.load_time > 3000);
+    if (slowPages.length > 0) {
+        recommendations.push({
+            issue: 'Slow Loading Pages',
+            severity: 'medium',
+            description: `${slowPages.length} page${slowPages.length > 1 ? 's are' : ' is'} loading slowly (over 3 seconds).`,
+            fixes: [
+                'Optimize images by compressing and using modern formats (WebP, AVIF)',
+                'Minify CSS and JavaScript files',
+                'Enable browser caching for static resources',
+                'Use a Content Delivery Network (CDN) for faster delivery',
+                'Reduce server response time and optimize database queries',
+                'Lazy load images and non-critical content'
+            ]
+        });
+    }
+    
+    // Check for low text-to-HTML ratio
+    let totalHtmlSize = 0;
+    let totalTextSize = 0;
+    pages.forEach(page => {
+        totalHtmlSize += page.html_content ? page.html_content.length : (page.word_count || 0) * 5;
+        if (page.text_content) {
+            totalTextSize += page.text_content.length;
+        }
+    });
+    const textToHtmlRatio = totalHtmlSize > 0 ? (totalTextSize / totalHtmlSize) * 100 : 0;
+    if (textToHtmlRatio < 2) {
+        recommendations.push({
+            issue: 'Low Text-to-HTML Ratio',
+            severity: 'medium',
+            description: `Your text-to-HTML ratio is ${textToHtmlRatio.toFixed(1)}%, which is below the recommended 3%.`,
+            fixes: [
+                'Reduce unnecessary HTML markup and code',
+                'Add more valuable text content to your pages',
+                'Remove unused CSS and JavaScript',
+                'Simplify page structure and reduce nested divs',
+                'Move inline styles to external stylesheets'
+            ]
+        });
+    }
+    
+    // Check for missing external links
+    const avgExternalLinks = pages.reduce((sum, p) => sum + (p.external_links || []).length, 0) / pages.length;
+    if (avgExternalLinks < 1) {
+        recommendations.push({
+            issue: 'Low Number of External Links',
+            severity: 'low',
+            description: 'Your site has very few external links, which can limit credibility and SEO value.',
+            fixes: [
+                'Add relevant external links to authoritative sources',
+                'Link to industry resources and research',
+                'Cite sources and references in your content',
+                'Build relationships with other sites for mutual linking',
+                'Ensure external links open in new tabs and use appropriate rel attributes'
+            ]
+        });
+    }
+    
+    if (recommendations.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>Great job! No major issues found that need immediate attention.</p></div>';
+        return;
+    }
+    
+    let html = '<div class="recommendations-list">';
+    recommendations.forEach(rec => {
+        const severityClass = rec.severity === 'high' ? 'high' : rec.severity === 'medium' ? 'medium' : 'low';
+        html += `
+            <div class="recommendation-item ${severityClass}">
+                <div class="recommendation-header">
+                    <h4 class="recommendation-title">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${rec.issue}
+                    </h4>
+                    <span class="severity-badge ${severityClass}">${rec.severity.toUpperCase()}</span>
+                </div>
+                <p class="recommendation-description">${rec.description}</p>
+                <div class="recommendation-fixes">
+                    <strong>How to Fix:</strong>
+                    <ul>
+                        ${rec.fixes.map(fix => `<li>${fix}</li>`).join('')}
+                    </ul>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
 }
 
 // Display overview section
@@ -1145,10 +2292,19 @@ function displaySimilarity(data) {
     });
 }
 
-// Display external links section
+// Display external links section (ENHANCED with deep analysis)
 function displayExternalLinks(data) {
     const container = document.getElementById('externalLinksContainer');
+    const summaryContainer = document.getElementById('externalLinksSummary');
     const allExternalLinks = [];
+    
+    // Get analyzed external links if available
+    const analyzedLinksMap = {};
+    if (data.external_links_analysis && data.external_links_analysis.analyzed_links) {
+        data.external_links_analysis.analyzed_links.forEach(analyzed => {
+            analyzedLinksMap[analyzed.url] = analyzed;
+        });
+    }
     
     // Extract external links with location data
     if (data.pages) {
@@ -1156,7 +2312,7 @@ function displayExternalLinks(data) {
             if (page.external_links && page.external_links.length > 0) {
                 page.external_links.forEach(linkData => {
                     // Handle both string URLs and dict objects with location data
-                    let linkUrl, anchorText, locationInfo, cssSelector, context;
+                    let linkUrl, anchorText, locationInfo, cssSelector, context, rel, target;
                     
                     if (typeof linkData === 'string') {
                         linkUrl = linkData;
@@ -1164,6 +2320,8 @@ function displayExternalLinks(data) {
                         locationInfo = {};
                         cssSelector = '';
                         context = {};
+                        rel = [];
+                        target = '';
                     } else if (typeof linkData === 'object') {
                         linkUrl = linkData.url || linkData.href || '';
                         anchorText = linkData.anchor_text || '';
@@ -1175,12 +2333,16 @@ function displayExternalLinks(data) {
                         };
                         cssSelector = linkData.css_selector || '';
                         context = linkData.context || {};
+                        rel = linkData.rel || [];
+                        target = linkData.target || '';
                     } else {
                         linkUrl = String(linkData);
                         anchorText = '';
                         locationInfo = {};
                         cssSelector = '';
                         context = {};
+                        rel = [];
+                        target = '';
                     }
                     
                     if (!linkUrl) return;
@@ -1193,6 +2355,9 @@ function displayExternalLinks(data) {
                         var domain = linkUrl;
                     }
                     
+                    // Merge with analyzed data if available
+                    const analyzed = analyzedLinksMap[linkUrl] || {};
+                    
                     allExternalLinks.push({
                         url: linkUrl,
                         domain: domain,
@@ -1202,20 +2367,43 @@ function displayExternalLinks(data) {
                         anchor_text: anchorText,
                         location_info: locationInfo,
                         css_selector: cssSelector,
-                        context: context
+                        context: context,
+                        rel: rel,
+                        target: target,
+                        // Enhanced analysis data
+                        accessible: analyzed.accessible,
+                        status_code: analyzed.status_code,
+                        status_text: analyzed.status_text,
+                        category: analyzed.category || 'Other',
+                        link_type: analyzed.link_type || (rel.includes('nofollow') ? 'Nofollow' : 'Follow'),
+                        quality_score: analyzed.quality_score,
+                        has_ssl: analyzed.has_ssl,
+                        response_time: analyzed.response_time,
+                        final_url: analyzed.final_url,
+                        redirect_count: analyzed.redirect_count
                     });
                 });
             }
         });
     }
     
-    // Group by unique URL
+    // Group by unique URL and merge analysis data
     const uniqueLinks = {};
     allExternalLinks.forEach(link => {
         if (!uniqueLinks[link.url]) {
             uniqueLinks[link.url] = {
                 url: link.url,
                 domain: link.domain,
+                category: link.category || 'Other',
+                link_type: link.link_type || 'Follow',
+                accessible: link.accessible,
+                status_code: link.status_code,
+                status_text: link.status_text,
+                quality_score: link.quality_score || { score: 0, level: 'Unknown' },
+                has_ssl: link.has_ssl,
+                response_time: link.response_time,
+                redirect_count: link.redirect_count || 0,
+                final_url: link.final_url || link.url,
                 sources: []
             };
         }
@@ -1226,7 +2414,9 @@ function displayExternalLinks(data) {
             anchor_text: link.anchor_text,
             location_info: link.location_info,
             css_selector: link.css_selector,
-            context: link.context
+            context: link.context,
+            rel: link.rel || [],
+            target: link.target || ''
         });
     });
     
@@ -1239,7 +2429,57 @@ function displayExternalLinks(data) {
         externalLinksTotal.textContent = totalLinks;
     }
     
-    // Populate page filter
+    // Display summary statistics
+    if (summaryContainer && data.external_links_analysis && data.external_links_analysis.summary) {
+        const summary = data.external_links_analysis.summary;
+        const accessible = summary.accessible || 0;
+        const inaccessible = summary.inaccessible || 0;
+        const withSSL = summary.with_ssl || 0;
+        
+        summaryContainer.innerHTML = `
+            <div class="external-links-summary-grid">
+                <div class="summary-stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>${summary.total || totalLinks}</h3>
+                        <p>Total Links Analyzed</p>
+                    </div>
+                </div>
+                <div class="summary-stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>${accessible}</h3>
+                        <p>Accessible Links</p>
+                    </div>
+                </div>
+                <div class="summary-stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                        <i class="fas fa-times-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>${inaccessible}</h3>
+                        <p>Inaccessible Links</p>
+                    </div>
+                </div>
+                <div class="summary-stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>${withSSL}</h3>
+                        <p>HTTPS Links</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        summaryContainer.style.display = 'block';
+    }
+    
+    // Populate filters
     const pageFilter = document.getElementById('externalPageFilter');
     if (pageFilter && data.pages) {
         pageFilter.innerHTML = '<option value="all">All Pages</option>';
@@ -1251,21 +2491,36 @@ function displayExternalLinks(data) {
         });
     }
     
+    // Populate category filter
+    const categoryFilter = document.getElementById('externalCategoryFilter');
+    if (categoryFilter) {
+        const categories = [...new Set(Object.values(uniqueLinks).map(l => l.category || 'Other'))].sort();
+        categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            categoryFilter.appendChild(option);
+        });
+    }
+    
     if (totalLinks === 0) {
         container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No external links found.</p></div>';
         return;
     }
     
-    // Create compact table format
+    // Create enhanced table format with analysis data
     let html = `
         <div class="table-container">
             <table class="data-table external-links-table">
                 <thead>
                     <tr>
-                        <th style="width: 30%;">External URL / Domain</th>
-                        <th style="width: 25%;">Source Page</th>
-                        <th style="width: 20%;">Anchor Text</th>
-                        <th style="width: 15%;">Location</th>
+                        <th style="width: 20%;">External URL / Domain</th>
+                        <th style="width: 15%;">Status</th>
+                        <th style="width: 10%;">Category</th>
+                        <th style="width: 10%;">Link Type</th>
+                        <th style="width: 10%;">Quality</th>
+                        <th style="width: 15%;">Source Page</th>
+                        <th style="width: 10%;">Anchor Text</th>
                         <th style="width: 10%;">Actions</th>
                     </tr>
                 </thead>
@@ -1284,32 +2539,54 @@ function displayExternalLinks(data) {
             const isFirstSource = sourceIndex === 0;
             const rowspan = sourceIndex === 0 ? linkData.sources.length : 0;
             
-            // Build location string
-            const locationParts = [];
-            if (source.location_info.parent_tag) {
-                locationParts.push(`<${source.location_info.parent_tag}>`);
-            }
-            if (source.location_info.parent_class) {
-                const classes = source.location_info.parent_class.split(' ')[0];
-                if (classes) locationParts.push(`.${classes}`);
-            }
-            if (source.location_info.parent_id) {
-                locationParts.push(`#${source.location_info.parent_id}`);
-            }
-            const locationStr = locationParts.length > 0 ? locationParts.join(' ') : 'Unknown';
-            
             // Get domain display
-            const domainDisplay = linkData.domain.length > 40 
-                ? linkData.domain.substring(0, 37) + '...' 
+            const domainDisplay = linkData.domain.length > 30 
+                ? linkData.domain.substring(0, 27) + '...' 
                 : linkData.domain;
             
             // Get URL display (shortened)
-            const urlDisplay = linkData.url.length > 50
-                ? linkData.url.substring(0, 47) + '...'
+            const urlDisplay = linkData.url.length > 40
+                ? linkData.url.substring(0, 37) + '...'
                 : linkData.url;
             
+            // Status badge
+            const statusCode = linkData.status_code || 0;
+            const statusText = linkData.status_text || 'Unknown';
+            const isAccessible = linkData.accessible !== false;
+            const statusClass = isAccessible ? 'status-success' : 'status-error';
+            const statusIcon = isAccessible ? 'fa-check-circle' : 'fa-times-circle';
+            
+            // Category badge
+            const category = linkData.category || 'Other';
+            const categoryColors = {
+                'Social Media': '#3b82f6',
+                'E-commerce': '#10b981',
+                'News': '#f59e0b',
+                'Search Engine': '#8b5cf6',
+                'Analytics': '#06b6d4',
+                'Payment': '#ef4444',
+                'Other': '#6b7280'
+            };
+            const categoryColor = categoryColors[category] || '#6b7280';
+            
+            // Link type badge
+            const linkType = linkData.link_type || 'Follow';
+            const linkTypeClass = linkType.includes('Nofollow') ? 'badge-warning' : 
+                                 linkType.includes('Sponsored') ? 'badge-danger' : 
+                                 linkType.includes('UGC') ? 'badge-info' : 'badge-success';
+            
+            // Quality score
+            const quality = linkData.quality_score || {};
+            const qualityScore = quality.score || 0;
+            const qualityLevel = quality.level || 'Unknown';
+            const qualityClass = qualityLevel === 'Excellent' ? 'quality-excellent' :
+                                qualityLevel === 'Good' ? 'quality-good' :
+                                qualityLevel === 'Fair' ? 'quality-fair' : 'quality-poor';
+            
             html += `
-                <tr class="external-link-row" data-link-index="${index}" data-source-index="${sourceIndex}">
+                <tr class="external-link-row" data-link-index="${index}" data-source-index="${sourceIndex}" 
+                    data-category="${category}" data-link-type="${linkType}" data-quality="${qualityLevel}" 
+                    data-accessible="${isAccessible}">
             `;
             
             // External URL / Domain (only show on first row)
@@ -1322,11 +2599,43 @@ function displayExternalLinks(data) {
                                 <a href="${linkData.url}" target="_blank" rel="noopener noreferrer" title="${linkData.url}">
                                     ${urlDisplay}
                                 </a>
+                                ${linkData.has_ssl ? '<i class="fas fa-lock" style="color: #10b981; margin-left: 5px;" title="HTTPS"></i>' : ''}
                             </div>
                             <div class="external-domain">
                                 <i class="fas fa-globe"></i> ${domainDisplay}
                             </div>
                             ${linkData.sources.length > 1 ? `<div class="link-count-badge">${linkData.sources.length} pages</div>` : ''}
+                        </div>
+                    </td>
+                    
+                    <!-- Status (only show on first row) -->
+                    <td rowspan="${rowspan}" class="status-cell">
+                        <div class="status-info">
+                            <span class="status-badge ${statusClass}" title="${statusText}">
+                                <i class="fas ${statusIcon}"></i> ${statusCode || 'N/A'}
+                            </span>
+                            ${linkData.response_time ? `<div class="response-time">${linkData.response_time}ms</div>` : ''}
+                            ${linkData.redirect_count > 0 ? `<div class="redirect-info"><i class="fas fa-arrow-right"></i> ${linkData.redirect_count} redirects</div>` : ''}
+                        </div>
+                    </td>
+                    
+                    <!-- Category (only show on first row) -->
+                    <td rowspan="${rowspan}" class="category-cell">
+                        <span class="category-badge" style="background-color: ${categoryColor}20; color: ${categoryColor}; border: 1px solid ${categoryColor}40;">
+                            ${category}
+                        </span>
+                    </td>
+                    
+                    <!-- Link Type (only show on first row) -->
+                    <td rowspan="${rowspan}" class="link-type-cell">
+                        <span class="badge ${linkTypeClass}">${linkType}</span>
+                    </td>
+                    
+                    <!-- Quality (only show on first row) -->
+                    <td rowspan="${rowspan}" class="quality-cell">
+                        <div class="quality-info">
+                            <span class="quality-badge ${qualityClass}">${qualityScore}/100</span>
+                            <div class="quality-level">${qualityLevel}</div>
                         </div>
                     </td>
                 `;
@@ -1337,9 +2646,8 @@ function displayExternalLinks(data) {
                 <td class="source-page-cell">
                     <div class="source-page-info">
                         <a href="${source.page_url}" target="_blank" title="${source.page_url}">
-                            ${source.page_title || source.page_url}
+                            ${(source.page_title || source.page_url).length > 30 ? (source.page_title || source.page_url).substring(0, 27) + '...' : (source.page_title || source.page_url)}
                         </a>
-                        <span class="status-badge status-${source.page_status === 200 ? '200' : 'error'}">${source.page_status || 'Unknown'}</span>
                     </div>
                 </td>
             `;
@@ -1347,15 +2655,7 @@ function displayExternalLinks(data) {
             // Anchor Text
             html += `
                 <td class="anchor-text-cell">
-                    ${source.anchor_text ? `<span class="anchor-text-display" title="${source.anchor_text}">"${source.anchor_text.length > 30 ? source.anchor_text.substring(0, 27) + '...' : source.anchor_text}"</span>` : '<span class="text-muted">(no text)</span>'}
-                </td>
-            `;
-            
-            // Location
-            html += `
-                <td class="location-cell">
-                    <span class="location-display" title="${locationStr}">${locationStr.length > 25 ? locationStr.substring(0, 22) + '...' : locationStr}</span>
-                    ${source.css_selector ? `<div class="css-selector-hint" title="CSS: ${source.css_selector}"><i class="fas fa-code"></i></div>` : ''}
+                    ${source.anchor_text ? `<span class="anchor-text-display" title="${source.anchor_text}">"${source.anchor_text.length > 25 ? source.anchor_text.substring(0, 22) + '...' : source.anchor_text}"</span>` : '<span class="text-muted">(no text)</span>'}
                 </td>
             `;
             
@@ -1390,14 +2690,22 @@ function displayExternalLinks(data) {
     setupExternalLinksFilter();
 }
 
-// Setup external links filter
+// Setup external links filter (ENHANCED)
 function setupExternalLinksFilter() {
     const searchInput = document.getElementById('externalSearchInput');
     const pageFilter = document.getElementById('externalPageFilter');
+    const categoryFilter = document.getElementById('externalCategoryFilter');
+    const typeFilter = document.getElementById('externalTypeFilter');
+    const qualityFilter = document.getElementById('externalQualityFilter');
+    const accessibilityFilter = document.getElementById('externalAccessibilityFilter');
     
     const filterLinks = () => {
-        const searchTerm = searchInput.value.toLowerCase();
-        const selectedPage = pageFilter.value;
+        const searchTerm = (searchInput?.value || '').toLowerCase();
+        const selectedPage = pageFilter?.value || 'all';
+        const selectedCategory = categoryFilter?.value || 'all';
+        const selectedType = typeFilter?.value || 'all';
+        const selectedQuality = qualityFilter?.value || 'all';
+        const selectedAccessibility = accessibilityFilter?.value || 'all';
         
         const linkRows = document.querySelectorAll('.external-link-row');
         linkRows.forEach(row => {
@@ -1444,8 +2752,53 @@ function setupExternalLinksFilter() {
                 }
             }
             
+            // Category filter
+            if (selectedCategory !== 'all') {
+                if (linkData.category !== selectedCategory) {
+                    show = false;
+                }
+            }
+            
+            // Link type filter
+            if (selectedType !== 'all') {
+                const linkType = linkData.link_type || 'Follow';
+                if (!linkType.includes(selectedType)) {
+                    show = false;
+                }
+            }
+            
+            // Quality filter
+            if (selectedQuality !== 'all') {
+                const quality = linkData.quality_score?.level || 'Unknown';
+                if (quality !== selectedQuality) {
+                    show = false;
+                }
+            }
+            
+            // Accessibility filter
+            if (selectedAccessibility !== 'all') {
+                const isAccessible = linkData.accessible !== false;
+                if (selectedAccessibility === 'accessible' && !isAccessible) {
+                    show = false;
+                } else if (selectedAccessibility === 'inaccessible' && isAccessible) {
+                    show = false;
+                }
+            }
+            
             row.style.display = show ? '' : 'none';
         });
+        
+        // Update visible count
+        const visibleCount = document.querySelectorAll('.external-link-row[style=""]').length;
+        const totalCount = linkRows.length;
+        const countEl = document.getElementById('externalLinksCount');
+        if (countEl) {
+            if (visibleCount < totalCount) {
+                countEl.textContent = `${visibleCount} of ${totalCount} links`;
+            } else {
+                countEl.textContent = `${totalCount} unique links`;
+            }
+        }
     };
     
     if (searchInput) {
@@ -1454,58 +2807,142 @@ function setupExternalLinksFilter() {
     if (pageFilter) {
         pageFilter.addEventListener('change', filterLinks);
     }
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', filterLinks);
+    }
+    if (typeFilter) {
+        typeFilter.addEventListener('change', filterLinks);
+    }
+    if (qualityFilter) {
+        qualityFilter.addEventListener('change', filterLinks);
+    }
+    if (accessibilityFilter) {
+        accessibilityFilter.addEventListener('change', filterLinks);
+    }
 }
 
-// Show external link details modal
+// Show external link details modal (ENHANCED)
 function showExternalLinkDetails(linkIndex, sourceIndex) {
     if (!window.externalLinksData || !window.externalLinksData[linkIndex]) return;
     
     const linkData = window.externalLinksData[linkIndex];
-    const source = linkData.sources[sourceIndex];
+    const source = linkData.sources[sourceIndex] || linkData.sources[0];
     
     if (!source) return;
     
     const locationParts = [];
-    if (source.location_info.parent_tag) locationParts.push(`<${source.location_info.parent_tag}>`);
-    if (source.location_info.parent_class) {
+    if (source.location_info?.parent_tag) locationParts.push(`<${source.location_info.parent_tag}>`);
+    if (source.location_info?.parent_class) {
         const classes = source.location_info.parent_class.split(' ')[0];
         if (classes) locationParts.push(`.${classes}`);
     }
-    if (source.location_info.parent_id) locationParts.push(`#${source.location_info.parent_id}`);
+    if (source.location_info?.parent_id) locationParts.push(`#${source.location_info.parent_id}`);
     const locationStr = locationParts.join(' ') || 'Unknown location';
     
     const contextBefore = (source.context?.before || '').substring(0, 100);
     const contextAfter = (source.context?.after || '').substring(0, 100);
     
+    // Enhanced analysis data
+    const statusCode = linkData.status_code || 0;
+    const statusText = linkData.status_text || 'Not analyzed';
+    const isAccessible = linkData.accessible !== false;
+    const category = linkData.category || 'Other';
+    const linkType = linkData.link_type || 'Follow';
+    const quality = linkData.quality_score || {};
+    const qualityScore = quality.score || 0;
+    const qualityLevel = quality.level || 'Unknown';
+    const hasSSL = linkData.has_ssl || false;
+    const responseTime = linkData.response_time || 0;
+    const redirectCount = linkData.redirect_count || 0;
+    const finalUrl = linkData.final_url || linkData.url;
+    
     let modalHtml = `
         <div class="modal" id="externalLinkModal" style="display: block;">
-            <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-content" style="max-width: 900px;">
                 <div class="modal-header">
                     <h2><i class="fas fa-external-link-alt"></i> External Link Details</h2>
                     <span class="close" onclick="closeExternalLinkModal()">&times;</span>
                 </div>
                 <div class="modal-body">
+                    <!-- Link Information -->
                     <div class="location-details-section">
                         <h3><i class="fas fa-link"></i> External URL</h3>
                         <p><a href="${linkData.url}" target="_blank" rel="noopener noreferrer">${linkData.url}</a></p>
                         <p><strong>Domain:</strong> ${linkData.domain}</p>
+                        ${finalUrl !== linkData.url ? `<p><strong>Final URL (after redirects):</strong> <a href="${finalUrl}" target="_blank">${finalUrl}</a></p>` : ''}
                     </div>
                     
+                    <!-- Analysis Results -->
+                    <div class="location-details-section">
+                        <h3><i class="fas fa-chart-line"></i> Analysis Results</h3>
+                        <div class="analysis-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 10px;">
+                            <div class="analysis-item">
+                                <strong>Status:</strong> 
+                                <span class="status-badge ${isAccessible ? 'status-success' : 'status-error'}">
+                                    ${statusCode || 'N/A'} - ${statusText}
+                                </span>
+                            </div>
+                            <div class="analysis-item">
+                                <strong>Accessible:</strong> 
+                                <span class="badge ${isAccessible ? 'badge-success' : 'badge-danger'}">
+                                    ${isAccessible ? 'Yes' : 'No'}
+                                </span>
+                            </div>
+                            <div class="analysis-item">
+                                <strong>Category:</strong> 
+                                <span class="category-badge">${category}</span>
+                            </div>
+                            <div class="analysis-item">
+                                <strong>Link Type:</strong> 
+                                <span class="badge ${linkType.includes('Nofollow') ? 'badge-warning' : 'badge-success'}">${linkType}</span>
+                            </div>
+                            <div class="analysis-item">
+                                <strong>Quality Score:</strong> 
+                                <span class="quality-badge quality-${qualityLevel.toLowerCase()}">${qualityScore}/100 (${qualityLevel})</span>
+                            </div>
+                            <div class="analysis-item">
+                                <strong>HTTPS:</strong> 
+                                <span class="badge ${hasSSL ? 'badge-success' : 'badge-warning'}">
+                                    ${hasSSL ? '<i class="fas fa-lock"></i> Yes' : '<i class="fas fa-unlock"></i> No'}
+                                </span>
+                            </div>
+                            ${responseTime > 0 ? `<div class="analysis-item">
+                                <strong>Response Time:</strong> ${responseTime}ms
+                            </div>` : ''}
+                            ${redirectCount > 0 ? `<div class="analysis-item">
+                                <strong>Redirects:</strong> ${redirectCount}
+                            </div>` : ''}
+                        </div>
+                        ${quality.factors && quality.factors.length > 0 ? `
+                        <div style="margin-top: 15px;">
+                            <strong>Quality Factors:</strong>
+                            <ul style="margin-top: 5px; padding-left: 20px;">
+                                ${quality.factors.map(factor => `<li>${factor}</li>`).join('')}
+                            </ul>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
+                    <!-- Source Page -->
                     <div class="location-details-section">
                         <h3><i class="fas fa-file-alt"></i> Source Page</h3>
                         <p><a href="${source.page_url}" target="_blank">${source.page_title || source.page_url}</a></p>
                         <p><strong>Status:</strong> <span class="status-badge status-${source.page_status === 200 ? '200' : 'error'}">${source.page_status || 'Unknown'}</span></p>
                     </div>
                     
+                    <!-- Anchor Text & Attributes -->
                     <div class="location-details-section">
-                        <h3><i class="fas fa-quote-left"></i> Anchor Text</h3>
-                        <p>${source.anchor_text || '(no anchor text)'}</p>
+                        <h3><i class="fas fa-quote-left"></i> Anchor Text & Attributes</h3>
+                        <p><strong>Anchor Text:</strong> ${source.anchor_text || '(no anchor text)'}</p>
+                        ${source.rel && source.rel.length > 0 ? `<p><strong>Rel Attributes:</strong> ${source.rel.join(', ')}</p>` : ''}
+                        ${source.target ? `<p><strong>Target:</strong> ${source.target}</p>` : ''}
                     </div>
                     
+                    <!-- Location Information -->
                     <div class="location-details-section">
                         <h3><i class="fas fa-map-marker-alt"></i> Location Information</h3>
                         <p><strong>HTML Element:</strong> ${locationStr}</p>
-                        ${source.location_info.line_number > 0 ? `<p><strong>Line Number:</strong> ${source.location_info.line_number}</p>` : ''}
+                        ${source.location_info?.line_number > 0 ? `<p><strong>Line Number:</strong> ${source.location_info.line_number}</p>` : ''}
                         ${source.css_selector ? `<p><strong>CSS Selector:</strong> <code>${source.css_selector}</code></p>` : ''}
                     </div>
                     
@@ -2306,6 +3743,10 @@ function filterTable() {
 
 // Show section
 function showSection(sectionName) {
+    // Load schema analysis when schema analyzer section is shown
+    if (sectionName === 'schema-analyzer') {
+        loadSchemaAnalysis();
+    }
     // Hide all sections
     document.querySelectorAll('.content-section').forEach(section => {
         section.classList.remove('active');
@@ -2325,10 +3766,12 @@ function showSection(sectionName) {
     // Add active class to clicked tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
         const btnText = btn.textContent.toLowerCase().trim();
-        const sectionMatch = sectionName.replace('-', ' ').replace('-', ' ');
+        const sectionMatch = sectionName.replace(/-/g, ' ');
         if (btnText.includes(sectionMatch) || 
             (sectionName === 'external-links' && btnText.includes('external')) ||
-            (sectionName === 'broken-links' && btnText.includes('broken'))) {
+            (sectionName === 'broken-links' && btnText.includes('broken')) ||
+            (sectionName === 'summary-report' && btnText.includes('summary')) ||
+            (sectionName === 'schema-analyzer' && btnText.includes('schema'))) {
             btn.classList.add('active');
         }
     });
@@ -4335,35 +5778,99 @@ function displayOrphanPages(data) {
         return;
     }
     
-    // Find page details for orphan pages
+    // Normalize URLs for comparison (handle trailing slashes, etc.)
+    const normalizeUrl = (url) => {
+        if (!url) return '';
+        try {
+            const urlObj = new URL(url);
+            let path = urlObj.pathname;
+            // Remove trailing slash except for root
+            if (path !== '/' && path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+            return urlObj.origin + path + urlObj.search;
+        } catch (e) {
+            return url;
+        }
+    };
+    
+    // Find page details for orphan pages with better matching
     const orphanPageDetails = [];
-    orphanPages.forEach(url => {
-        const page = data.pages?.find(p => p.url === url);
+    const normalizedOrphanUrls = new Set(orphanPages.map(normalizeUrl));
+    
+    orphanPages.forEach(orphanUrl => {
+        const normalizedOrphan = normalizeUrl(orphanUrl);
+        
+        // Try exact match first
+        let page = data.pages?.find(p => {
+            const normalizedPage = normalizeUrl(p.url);
+            return normalizedPage === normalizedOrphan || p.url === orphanUrl;
+        });
+        
+        // If not found, try case-insensitive and path variations
+        if (!page) {
+            page = data.pages?.find(p => {
+                const normalizedPage = normalizeUrl(p.url);
+                return normalizedPage.toLowerCase() === normalizedOrphan.toLowerCase();
+            });
+        }
+        
         if (page) {
+            // Calculate incoming links count
+            let incomingLinksCount = 0;
+            if (data.pages) {
+                data.pages.forEach(p => {
+                    const internalLinks = p.internal_links || [];
+                    internalLinks.forEach(link => {
+                        const linkUrl = typeof link === 'string' ? link : (link.url || '');
+                        if (linkUrl) {
+                            const normalizedLink = normalizeUrl(linkUrl);
+                            if (normalizedLink === normalizedOrphan || normalizeUrl(linkUrl) === normalizedOrphan) {
+                                incomingLinksCount++;
+                            }
+                        }
+                    });
+                });
+            }
+            
             orphanPageDetails.push({
                 url: page.url,
-                title: page.title,
-                word_count: page.word_count,
-                status_code: page.status_code,
+                title: page.title || 'Untitled',
+                word_count: page.word_count || 0,
+                status_code: page.status_code || 0,
                 internal_links: (page.internal_links || []).length,
-                seo_score: page.seo_score?.score
+                incoming_links: incomingLinksCount,
+                seo_score: page.seo_score?.score || null,
+                is_exact_duplicate: page.is_exact_duplicate || false
             });
         } else {
+            // Page not found in crawled pages (might be skipped or error)
             orphanPageDetails.push({
-                url: url,
-                title: 'Unknown',
+                url: orphanUrl,
+                title: 'Page Not Found in Crawl',
                 word_count: 0,
                 status_code: 0,
                 internal_links: 0,
-                seo_score: null
+                incoming_links: 0,
+                seo_score: null,
+                is_exact_duplicate: false,
+                note: 'This page was detected as orphan but was not successfully crawled'
             });
         }
     });
     
+    // Sort by word count (descending) - prioritize pages with content
+    orphanPageDetails.sort((a, b) => (b.word_count || 0) - (a.word_count || 0));
+    
     let html = `
         <div class="orphan-pages-info">
-            <p><strong>Orphan pages</strong> are pages that have no internal links pointing to them. 
-            These pages are harder for search engines to discover and may not be indexed.</p>
+            <div class="info-box">
+                <h4><i class="fas fa-info-circle"></i> What are Orphan Pages?</h4>
+                <p><strong>Orphan pages</strong> are pages that have no internal links pointing to them from other pages on your site. 
+                These pages are harder for search engines to discover and may not be indexed properly.</p>
+                <p><strong>Impact:</strong> Orphan pages can hurt your SEO because search engines rely on internal linking to discover and rank pages. 
+                Pages without internal links receive less link equity and may be deprioritized in search results.</p>
+            </div>
         </div>
         <div class="table-container">
             <table id="orphanPagesTable">
@@ -4372,8 +5879,9 @@ function displayOrphanPages(data) {
                         <th>Page URL</th>
                         <th>Title</th>
                         <th>Word Count</th>
+                        <th>Incoming Links</th>
+                        <th>Outgoing Links</th>
                         <th>Status</th>
-                        <th>SEO Score</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -4381,23 +5889,36 @@ function displayOrphanPages(data) {
     `;
     
     orphanPageDetails.forEach(page => {
+        const statusClass = page.status_code === 200 ? '200' : page.status_code >= 400 ? 'error' : 'warning';
+        const statusText = page.status_code || 'Unknown';
+        
         html += `
-            <tr>
-                <td><a href="${page.url}" target="_blank">${page.url}</a></td>
-                <td>${page.title || '-'}</td>
+            <tr class="${page.note ? 'orphan-warning' : ''}">
+                <td>
+                    <a href="${page.url}" target="_blank" title="${page.url}">
+                        ${truncateUrl(page.url, 60)}
+                    </a>
+                    ${page.note ? `<br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ${page.note}</small>` : ''}
+                </td>
+                <td>${escapeHtml(page.title) || '-'}</td>
                 <td>${page.word_count || 0}</td>
                 <td>
-                    <span class="status-badge status-${page.status_code === 200 ? '200' : 'error'}">
-                        ${page.status_code || 'Unknown'}
+                    <span class="badge ${page.incoming_links === 0 ? 'badge-danger' : 'badge-warning'}">
+                        ${page.incoming_links} ${page.incoming_links === 1 ? 'link' : 'links'}
+                    </span>
+                </td>
+                <td>${page.internal_links || 0}</td>
+                <td>
+                    <span class="status-badge status-${statusClass}">
+                        ${statusText}
                     </span>
                 </td>
                 <td>
-                    ${page.seo_score !== null ? `<span class="score-badge">${page.seo_score}</span>` : 'N/A'}
-                </td>
-                <td>
-                    <button class="action-btn action-btn-view" data-url="${page.url}">
-                        <i class="fas fa-eye"></i> View
-                    </button>
+                    ${page.url && !page.note ? `
+                        <button class="action-btn action-btn-view" data-url="${page.url}" title="View Page Details">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    ` : '<span class="text-muted">N/A</span>'}
                 </td>
             </tr>
         `;
@@ -4408,13 +5929,26 @@ function displayOrphanPages(data) {
             </table>
         </div>
         <div class="orphan-pages-suggestion">
-            <h4><i class="fas fa-lightbulb"></i> Recommendations:</h4>
-            <ul>
-                <li>Add internal links to orphan pages from your main navigation or related content</li>
-                <li>Include orphan pages in your XML sitemap</li>
-                <li>Create a "Site Map" page that links to all important pages</li>
-                <li>Add links to orphan pages from your homepage or category pages</li>
-            </ul>
+            <h4><i class="fas fa-lightbulb"></i> How to Fix Orphan Pages:</h4>
+            <div class="recommendations-grid">
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-link"></i> Add Internal Links</h5>
+                    <p>Add internal links to orphan pages from your main navigation, related content pages, or category pages. 
+                    This helps search engines discover these pages and improves their ranking potential.</p>
+                </div>
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-sitemap"></i> Update XML Sitemap</h5>
+                    <p>Ensure all orphan pages are included in your XML sitemap. This helps search engines find pages even if they're not linked internally.</p>
+                </div>
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-home"></i> Link from Homepage</h5>
+                    <p>Add links to important orphan pages from your homepage or main landing pages. Homepage links carry more weight in SEO.</p>
+                </div>
+                <div class="recommendation-item">
+                    <h5><i class="fas fa-project-diagram"></i> Create Site Map Page</h5>
+                    <p>Create a "Site Map" or "All Pages" page that links to all important pages on your site, including orphan pages.</p>
+                </div>
+            </div>
         </div>
     `;
     
@@ -4424,11 +5958,1863 @@ function displayOrphanPages(data) {
     const viewButtons = container.querySelectorAll('button.action-btn-view');
     viewButtons.forEach(btn => {
         const url = btn.getAttribute('data-url');
-        const page = data.pages?.find(p => p.url === url);
-        if (page) {
-            btn.onclick = () => showPageDetails(page);
+        if (url) {
+            const page = data.pages?.find(p => {
+                const normalizedPage = normalizeUrl(p.url);
+                const normalizedBtn = normalizeUrl(url);
+                return normalizedPage === normalizedBtn || p.url === url;
+            });
+            if (page) {
+                btn.onclick = () => showPageDetails(page);
+            }
         }
     });
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Display Canonical Links Analysis
+function displayCanonicalLinks(data) {
+    if (!data || !data.pages) return;
+    
+    const pages = data.pages;
+    const allPages = new Map();
+    pages.forEach(page => {
+        allPages.set(page.url, page);
+    });
+    
+    // Normalize URL for comparison
+    const normalizeUrl = (url) => {
+        if (!url) return '';
+        try {
+            const urlObj = new URL(url);
+            let path = urlObj.pathname;
+            if (path !== '/' && path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+            return urlObj.origin + path + urlObj.search;
+        } catch (e) {
+            return url;
+        }
+    };
+    
+    // Analyze all canonical links
+    const canonicalAnalysis = [];
+    const canonicalMap = new Map(); // canonical URL -> array of pages using it
+    const missingCanonical = [];
+    const selfReferencing = [];
+    const differentPage = [];
+    const externalCanonical = [];
+    const relativeCanonical = [];
+    const canonicalChains = [];
+    
+    pages.forEach(page => {
+        const pageUrl = page.url;
+        const canonicalUrl = (page.canonical_url || '').trim();
+        const normalizedPageUrl = normalizeUrl(pageUrl);
+        
+        const analysis = {
+            pageUrl: pageUrl,
+            pageTitle: page.title || 'Untitled',
+            canonicalUrl: canonicalUrl,
+            normalizedPageUrl: normalizedPageUrl,
+            normalizedCanonicalUrl: canonicalUrl ? normalizeUrl(canonicalUrl) : '',
+            issues: [],
+            status: 'ok',
+            severity: 'low'
+        };
+        
+        // Check if canonical exists
+        if (!canonicalUrl) {
+            analysis.issues.push('missing');
+            analysis.status = 'missing';
+            analysis.severity = 'medium';
+            missingCanonical.push(analysis);
+        } else {
+            // Check if relative URL
+            if (!canonicalUrl.startsWith('http://') && !canonicalUrl.startsWith('https://')) {
+                analysis.issues.push('relative');
+                analysis.status = 'relative';
+                analysis.severity = 'low';
+                relativeCanonical.push(analysis);
+            } else {
+                // Check if external domain
+                try {
+                    const pageDomain = new URL(pageUrl).hostname;
+                    const canonicalDomain = new URL(canonicalUrl).hostname;
+                    if (pageDomain !== canonicalDomain) {
+                        analysis.issues.push('external');
+                        analysis.status = 'external';
+                        analysis.severity = 'high';
+                        externalCanonical.push(analysis);
+                    }
+                } catch (e) {
+                    analysis.issues.push('invalid');
+                    analysis.status = 'invalid';
+                    analysis.severity = 'high';
+                }
+                
+                // Check if self-referencing
+                if (analysis.normalizedCanonicalUrl === analysis.normalizedPageUrl) {
+                    analysis.issues.push('self-reference');
+                    analysis.status = 'self-reference';
+                    analysis.severity = 'low';
+                    selfReferencing.push(analysis);
+                } else if (analysis.normalizedCanonicalUrl && analysis.normalizedCanonicalUrl !== analysis.normalizedPageUrl) {
+                    // Points to different page
+                    analysis.issues.push('different-page');
+                    analysis.status = 'different-page';
+                    analysis.severity = 'medium';
+                    differentPage.push(analysis);
+                }
+            }
+            
+            // Track canonical usage
+            if (analysis.normalizedCanonicalUrl) {
+                if (!canonicalMap.has(analysis.normalizedCanonicalUrl)) {
+                    canonicalMap.set(analysis.normalizedCanonicalUrl, []);
+                }
+                canonicalMap.get(analysis.normalizedCanonicalUrl).push(analysis);
+            }
+        }
+        
+        canonicalAnalysis.push(analysis);
+    });
+    
+    // Detect duplicate canonicals (multiple pages pointing to same canonical)
+    const duplicateCanonicals = [];
+    canonicalMap.forEach((pagesUsingCanonical, canonicalUrl) => {
+        if (pagesUsingCanonical.length > 1) {
+            duplicateCanonicals.push({
+                canonicalUrl: canonicalUrl,
+                pages: pagesUsingCanonical,
+                count: pagesUsingCanonical.length
+            });
+        }
+    });
+    
+    // Detect canonical chains (A -> B -> C)
+    const chainMap = new Map();
+    canonicalAnalysis.forEach(analysis => {
+        if (analysis.normalizedCanonicalUrl && analysis.normalizedCanonicalUrl !== analysis.normalizedPageUrl) {
+            const targetPage = allPages.get(analysis.canonicalUrl);
+            if (targetPage) {
+                const targetCanonical = (targetPage.canonical_url || '').trim();
+                if (targetCanonical) {
+                    const normalizedTargetCanonical = normalizeUrl(targetCanonical);
+                    if (normalizedTargetCanonical !== analysis.normalizedCanonicalUrl) {
+                        // Chain detected: page -> canonical -> canonical's canonical
+                        const chainKey = `${analysis.normalizedPageUrl}->${analysis.normalizedCanonicalUrl}->${normalizedTargetCanonical}`;
+                        if (!chainMap.has(chainKey)) {
+                            chainMap.set(chainKey, {
+                                start: analysis.pageUrl,
+                                intermediate: analysis.canonicalUrl,
+                                end: targetCanonical,
+                                pages: [analysis]
+                            });
+                        } else {
+                            chainMap.get(chainKey).pages.push(analysis);
+                        }
+                    }
+                }
+            }
+        }
+    });
+    canonicalChains.push(...Array.from(chainMap.values()));
+    
+    // Calculate statistics
+    const stats = {
+        total: pages.length,
+        withCanonical: pages.length - missingCanonical.length,
+        missing: missingCanonical.length,
+        selfReference: selfReferencing.length,
+        differentPage: differentPage.length,
+        external: externalCanonical.length,
+        relative: relativeCanonical.length,
+        duplicate: duplicateCanonicals.length,
+        chains: canonicalChains.length
+    };
+    
+    // Update summary statistics
+    updateCanonicalSummaryStats(stats);
+    
+    // Display all canonical links table
+    displayCanonicalLinksTable(canonicalAnalysis, data);
+    
+    // Display detailed issue sections
+    displayMissingCanonical(missingCanonical);
+    displayCanonicalChains(canonicalChains);
+    displayDuplicateCanonicals(duplicateCanonicals);
+    displayExternalCanonicals(externalCanonical);
+    
+    // Display recommendations
+    displayCanonicalRecommendations(stats, canonicalAnalysis);
+    
+    // Setup filters
+    setupCanonicalFilters(canonicalAnalysis, data);
+}
+
+// Update canonical summary statistics
+function updateCanonicalSummaryStats(stats) {
+    const elements = {
+        totalPagesWithCanonical: document.getElementById('totalPagesWithCanonical'),
+        missingCanonicalCount: document.getElementById('missingCanonicalCount'),
+        selfReferenceCount: document.getElementById('selfReferenceCount'),
+        differentPageCount: document.getElementById('differentPageCount'),
+        duplicateCanonicalCount: document.getElementById('duplicateCanonicalCount'),
+        canonicalChainsCount: document.getElementById('canonicalChainsCount')
+    };
+    
+    if (elements.totalPagesWithCanonical) elements.totalPagesWithCanonical.textContent = stats.withCanonical;
+    if (elements.missingCanonicalCount) elements.missingCanonicalCount.textContent = stats.missing;
+    if (elements.selfReferenceCount) elements.selfReferenceCount.textContent = stats.selfReference;
+    if (elements.differentPageCount) elements.differentPageCount.textContent = stats.differentPage;
+    if (elements.duplicateCanonicalCount) elements.duplicateCanonicalCount.textContent = stats.duplicate;
+    if (elements.canonicalChainsCount) elements.canonicalChainsCount.textContent = stats.chains;
+}
+
+// Display all canonical links table
+function displayCanonicalLinksTable(canonicalAnalysis, data) {
+    const tbody = document.getElementById('canonicalLinksTableBody');
+    if (!tbody) return;
+    
+    if (canonicalAnalysis.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No pages found.</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    canonicalAnalysis.forEach(analysis => {
+        const statusBadge = getCanonicalStatusBadge(analysis);
+        const issuesBadges = analysis.issues.map(issue => getCanonicalIssueBadge(issue)).join(' ');
+        
+        html += `
+            <tr data-page-url="${analysis.pageUrl}" data-canonical-url="${analysis.canonicalUrl}" data-issues="${analysis.issues.join(',')}">
+                <td>
+                    <a href="${analysis.pageUrl}" target="_blank" title="${analysis.pageUrl}">
+                        ${truncateUrl(analysis.pageUrl, 50)}
+                    </a>
+                </td>
+                <td>${escapeHtml(analysis.pageTitle)}</td>
+                <td>
+                    ${analysis.canonicalUrl ? `
+                        <a href="${analysis.canonicalUrl}" target="_blank" title="${analysis.canonicalUrl}">
+                            ${truncateUrl(analysis.canonicalUrl, 50)}
+                        </a>
+                    ` : '<span class="text-muted">No canonical</span>'}
+                </td>
+                <td>${statusBadge}</td>
+                <td>${issuesBadges || '<span class="text-success">✓ OK</span>'}</td>
+                <td>
+                    <button class="action-btn action-btn-view" onclick="showCanonicalDetails('${analysis.pageUrl}')" title="View Details">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Get canonical status badge
+function getCanonicalStatusBadge(analysis) {
+    const statusMap = {
+        'ok': '<span class="badge badge-success">OK</span>',
+        'missing': '<span class="badge badge-danger">Missing</span>',
+        'self-reference': '<span class="badge badge-info">Self-Reference</span>',
+        'different-page': '<span class="badge badge-warning">Different Page</span>',
+        'external': '<span class="badge badge-danger">External</span>',
+        'relative': '<span class="badge badge-warning">Relative</span>',
+        'invalid': '<span class="badge badge-danger">Invalid</span>'
+    };
+    return statusMap[analysis.status] || statusMap['ok'];
+}
+
+// Get canonical issue badge
+function getCanonicalIssueBadge(issue) {
+    const issueMap = {
+        'missing': '<span class="badge badge-danger">Missing</span>',
+        'self-reference': '<span class="badge badge-info">Self-Reference</span>',
+        'different-page': '<span class="badge badge-warning">Different Page</span>',
+        'external': '<span class="badge badge-danger">External</span>',
+        'relative': '<span class="badge badge-warning">Relative</span>',
+        'duplicate-canonical': '<span class="badge badge-secondary">Duplicate</span>',
+        'chain': '<span class="badge badge-info">Chain</span>',
+        'invalid': '<span class="badge badge-danger">Invalid</span>'
+    };
+    return issueMap[issue] || '';
+}
+
+// Display missing canonical
+function displayMissingCanonical(missingCanonical) {
+    const container = document.getElementById('missingCanonicalContainer');
+    if (!container) return;
+    
+    if (missingCanonical.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages have canonical tags!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="canonical-issues-list">';
+    missingCanonical.slice(0, 50).forEach(analysis => {
+        html += `
+            <div class="canonical-issue-item">
+                <div class="canonical-issue-details">
+                    <div class="canonical-page-url">
+                        <a href="${analysis.pageUrl}" target="_blank">${truncateUrl(analysis.pageUrl, 60)}</a>
+                    </div>
+                    <div class="canonical-page-title">${escapeHtml(analysis.pageTitle)}</div>
+                    <div class="canonical-recommendation">
+                        <i class="fas fa-info-circle"></i> Add a canonical tag pointing to this page URL
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    if (missingCanonical.length > 50) {
+        html += `<div class="more-items">... and ${missingCanonical.length - 50} more pages</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display canonical chains
+function displayCanonicalChains(chains) {
+    const container = document.getElementById('canonicalChainsContainer');
+    if (!container) return;
+    
+    if (chains.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No canonical chains detected!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="canonical-issues-list">';
+    chains.slice(0, 20).forEach(chain => {
+        html += `
+            <div class="canonical-issue-item">
+                <div class="canonical-chain">
+                    <div class="chain-step">
+                        <strong>Start:</strong> <a href="${chain.start}" target="_blank">${truncateUrl(chain.start, 40)}</a>
+                    </div>
+                    <div class="chain-arrow">→</div>
+                    <div class="chain-step">
+                        <strong>Intermediate:</strong> <a href="${chain.intermediate}" target="_blank">${truncateUrl(chain.intermediate, 40)}</a>
+                    </div>
+                    <div class="chain-arrow">→</div>
+                    <div class="chain-step">
+                        <strong>End:</strong> <a href="${chain.end}" target="_blank">${truncateUrl(chain.end, 40)}</a>
+                    </div>
+                </div>
+                <div class="canonical-recommendation">
+                    <i class="fas fa-exclamation-triangle"></i> Canonical chain detected. Consider pointing directly to the final canonical URL.
+                </div>
+            </div>
+        `;
+    });
+    if (chains.length > 20) {
+        html += `<div class="more-items">... and ${chains.length - 20} more chains</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display duplicate canonicals
+function displayDuplicateCanonicals(duplicates) {
+    const container = document.getElementById('duplicateCanonicalsContainer');
+    if (!container) return;
+    
+    if (duplicates.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate canonicals found!</p></div>';
+        return;
+    }
+    
+    // Sort by count descending
+    duplicates.sort((a, b) => b.count - a.count);
+    
+    let html = '<div class="canonical-issues-list">';
+    duplicates.slice(0, 20).forEach(dup => {
+        html += `
+            <div class="canonical-issue-item">
+                <div class="canonical-duplicate-header">
+                    <strong>Canonical URL:</strong> <a href="${dup.canonicalUrl}" target="_blank">${truncateUrl(dup.canonicalUrl, 50)}</a>
+                    <span class="badge badge-secondary">${dup.count} pages</span>
+                </div>
+                <div class="canonical-pages-list">
+                    ${dup.pages.slice(0, 5).map(p => `
+                        <div class="canonical-page-item">
+                            <a href="${p.pageUrl}" target="_blank">${truncateUrl(p.pageUrl, 50)}</a>
+                        </div>
+                    `).join('')}
+                    ${dup.pages.length > 5 ? `<div class="more-pages">... and ${dup.pages.length - 5} more pages</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    if (duplicates.length > 20) {
+        html += `<div class="more-items">... and ${duplicates.length - 20} more duplicate canonicals</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display external canonicals
+function displayExternalCanonicals(external) {
+    const container = document.getElementById('externalCanonicalsContainer');
+    if (!container) return;
+    
+    if (external.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No external canonicals found!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="canonical-issues-list">';
+    external.slice(0, 30).forEach(analysis => {
+        try {
+            const pageDomain = new URL(analysis.pageUrl).hostname;
+            const canonicalDomain = new URL(analysis.canonicalUrl).hostname;
+            
+            html += `
+                <div class="canonical-issue-item">
+                    <div class="canonical-issue-details">
+                        <div class="canonical-page-url">
+                            <strong>Page:</strong> <a href="${analysis.pageUrl}" target="_blank">${truncateUrl(analysis.pageUrl, 50)}</a>
+                            <span class="badge">${pageDomain}</span>
+                        </div>
+                        <div class="canonical-external-url">
+                            <strong>Canonical:</strong> <a href="${analysis.canonicalUrl}" target="_blank">${truncateUrl(analysis.canonicalUrl, 50)}</a>
+                            <span class="badge badge-danger">${canonicalDomain}</span>
+                        </div>
+                        <div class="canonical-recommendation">
+                            <i class="fas fa-exclamation-triangle"></i> Canonical points to external domain. This may cause SEO issues.
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            // Skip invalid URLs
+        }
+    });
+    if (external.length > 30) {
+        html += `<div class="more-items">... and ${external.length - 30} more external canonicals</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display canonical recommendations
+function displayCanonicalRecommendations(stats, canonicalAnalysis) {
+    const container = document.getElementById('canonicalRecommendationsContainer');
+    if (!container) return;
+    
+    const recommendations = [];
+    
+    if (stats.missing > 0) {
+        recommendations.push({
+            title: 'Add Missing Canonical Tags',
+            description: `${stats.missing} page${stats.missing > 1 ? 's' : ''} are missing canonical tags.`,
+            priority: 'high',
+            fixes: [
+                'Add a canonical tag to every page pointing to the preferred URL version',
+                'Use absolute URLs (not relative) for canonical tags',
+                'Self-reference canonicals are acceptable (canonical = current page URL)',
+                'Include canonical tags in the <head> section of your HTML'
+            ],
+            code: `<link rel="canonical" href="https://example.com/page" />`
+        });
+    }
+    
+    if (stats.chains > 0) {
+        recommendations.push({
+            title: 'Fix Canonical Chains',
+            description: `${stats.chains} canonical chain${stats.chains > 1 ? 's' : ''} detected.`,
+            priority: 'medium',
+            fixes: [
+                'Point canonical tags directly to the final destination URL',
+                'Avoid chains like: Page A → Page B → Page C',
+                'Instead use: Page A → Page C, Page B → Page C',
+                'This helps search engines understand your preferred URLs faster'
+            ]
+        });
+    }
+    
+    if (stats.duplicate > 0) {
+        recommendations.push({
+            title: 'Review Duplicate Canonicals',
+            description: `${stats.duplicate} canonical URL${stats.duplicate > 1 ? 's are' : ' is'} used by multiple pages.`,
+            priority: 'low',
+            fixes: [
+                'Multiple pages can point to the same canonical URL (this is normal for duplicate content)',
+                'Ensure all duplicate/similar pages point to the same canonical',
+                'This helps consolidate ranking signals to one preferred page'
+            ]
+        });
+    }
+    
+    if (stats.external > 0) {
+        recommendations.push({
+            title: 'Fix External Canonicals',
+            description: `${stats.external} page${stats.external > 1 ? 's have' : ' has'} canonical tags pointing to external domains.`,
+            priority: 'high',
+            fixes: [
+                'Canonical tags should point to pages on your own domain',
+                'External canonicals can cause SEO issues and ranking problems',
+                'Update these canonicals to point to the correct internal page',
+                'If you need to point to external content, use a 301 redirect instead'
+            ]
+        });
+    }
+    
+    if (stats.relative > 0) {
+        recommendations.push({
+            title: 'Use Absolute URLs for Canonicals',
+            description: `${stats.relative} page${stats.relative > 1 ? 's have' : ' has'} relative canonical URLs.`,
+            priority: 'medium',
+            fixes: [
+                'Always use absolute URLs (starting with http:// or https://) for canonical tags',
+                'Relative URLs can cause confusion for search engines',
+                'Example: Use "https://example.com/page" not "/page"'
+            ],
+            code: `<!-- ❌ BAD: Relative URL -->
+<link rel="canonical" href="/page" />
+
+<!-- ✅ GOOD: Absolute URL -->
+<link rel="canonical" href="https://example.com/page" />`
+        });
+    }
+    
+    if (recommendations.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>Your canonical tags are properly configured!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="recommendations-list">';
+    recommendations.forEach(rec => {
+        const priorityClass = rec.priority === 'high' ? 'high' : rec.priority === 'medium' ? 'medium' : 'low';
+        html += `
+            <div class="recommendation-item ${priorityClass}">
+                <div class="recommendation-header">
+                    <h4 class="recommendation-title">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${rec.title}
+                    </h4>
+                    <span class="severity-badge ${priorityClass}">${rec.priority.toUpperCase()}</span>
+                </div>
+                <p class="recommendation-description">${rec.description}</p>
+                <div class="recommendation-fixes">
+                    <strong>How to Fix:</strong>
+                    <ul>
+                        ${rec.fixes.map(fix => `<li>${fix}</li>`).join('')}
+                    </ul>
+                    ${rec.code ? `<div class="code-example"><pre><code>${escapeHtml(rec.code)}</code></pre></div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Setup canonical filters
+function setupCanonicalFilters(canonicalAnalysis, data) {
+    const searchInput = document.getElementById('canonicalSearchInput');
+    const issueFilter = document.getElementById('canonicalIssueFilter');
+    const tbody = document.getElementById('canonicalLinksTableBody');
+    
+    if (!searchInput || !issueFilter || !tbody) return;
+    
+    const applyFilters = () => {
+        const searchTerm = (searchInput.value || '').toLowerCase();
+        const selectedIssue = issueFilter.value;
+        
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            let show = true;
+            
+            // Search filter
+            if (searchTerm) {
+                const pageUrl = (row.dataset.pageUrl || '').toLowerCase();
+                const canonicalUrl = (row.dataset.canonicalUrl || '').toLowerCase();
+                if (!pageUrl.includes(searchTerm) && !canonicalUrl.includes(searchTerm)) {
+                    show = false;
+                }
+            }
+            
+            // Issue filter
+            if (selectedIssue !== 'all') {
+                const issues = (row.dataset.issues || '').split(',');
+                if (!issues.includes(selectedIssue)) {
+                    show = false;
+                }
+            }
+            
+            row.style.display = show ? '' : 'none';
+        });
+    };
+    
+    searchInput.addEventListener('input', applyFilters);
+    issueFilter.addEventListener('change', applyFilters);
+}
+
+// Show canonical details
+function showCanonicalDetails(pageUrl) {
+    if (!reportData || !reportData.pages) return;
+    
+    const page = reportData.pages.find(p => p.url === pageUrl);
+    if (!page) return;
+    
+    const modal = document.getElementById('pageModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalTitle || !modalBody) return;
+    
+    const canonicalUrl = page.canonical_url || 'Not set';
+    const hasCanonical = !!page.canonical_url;
+    
+    modalTitle.textContent = 'Canonical Link Details';
+    modalBody.innerHTML = `
+        <div class="canonical-details-modal">
+            <h3>Page Information</h3>
+            <table class="details-table">
+                <tr>
+                    <th>Page URL:</th>
+                    <td><a href="${page.url}" target="_blank">${page.url}</a></td>
+                </tr>
+                <tr>
+                    <th>Page Title:</th>
+                    <td>${escapeHtml(page.title || 'Untitled')}</td>
+                </tr>
+                <tr>
+                    <th>Canonical URL:</th>
+                    <td>${hasCanonical ? `<a href="${canonicalUrl}" target="_blank">${canonicalUrl}</a>` : '<span class="text-muted">Not set</span>'}</td>
+                </tr>
+                <tr>
+                    <th>Status:</th>
+                    <td>${hasCanonical ? '<span class="badge badge-success">Has Canonical</span>' : '<span class="badge badge-danger">Missing</span>'}</td>
+                </tr>
+            </table>
+            ${hasCanonical ? `
+                <div class="canonical-analysis" style="margin-top: 20px;">
+                    <h4>Analysis</h4>
+                    <ul>
+                        ${canonicalUrl === page.url ? '<li class="text-info">✓ Canonical is self-referencing (this is correct)</li>' : ''}
+                        ${canonicalUrl !== page.url ? '<li class="text-warning">⚠ Canonical points to a different page</li>' : ''}
+                        ${canonicalUrl.startsWith('http') ? '<li class="text-success">✓ Canonical uses absolute URL</li>' : '<li class="text-warning">⚠ Canonical uses relative URL (should be absolute)</li>'}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    modal.style.display = 'block';
+}
+
+// Display Professional SEO Audit
+function displayProfessionalAudit(data) {
+    const audit = data.professional_audit || {};
+    if (!audit || Object.keys(audit).length === 0) {
+        const overview = document.getElementById('auditOverview');
+        const content = document.getElementById('auditContent');
+        if (overview) {
+            overview.innerHTML = '<div class="info-message"><i class="fas fa-info-circle"></i><p>Professional audit data not available. Run a new crawl to generate audit results.</p></div>';
+        }
+        if (content) {
+            content.innerHTML = '';
+        }
+        return;
+    }
+    
+    // Display overview
+    displayAuditOverview(audit);
+    
+    // Create section tabs
+    createAuditSectionTabs(audit);
+    
+    // Display default section
+    showAuditSection('core-web-vitals', audit);
+}
+
+// Display audit overview
+function displayAuditOverview(audit) {
+    const container = document.getElementById('auditOverview');
+    if (!container) return;
+    
+    const totalPages = audit.total_pages || 0;
+    const auditDate = audit.audit_date || new Date().toISOString();
+    const date = new Date(auditDate).toLocaleDateString();
+    
+    // Calculate overall score
+    const indexability = audit.indexability_scores || {};
+    const avgScore = indexability.avg_score || 0;
+    
+    let html = `
+        <div class="audit-overview-grid">
+            <div class="audit-overview-card">
+                <div class="overview-icon"><i class="fas fa-file-alt"></i></div>
+                <div class="overview-content">
+                    <div class="overview-value">${totalPages}</div>
+                    <div class="overview-label">Pages Analyzed</div>
+                </div>
+            </div>
+            <div class="audit-overview-card">
+                <div class="overview-icon"><i class="fas fa-chart-line"></i></div>
+                <div class="overview-content">
+                    <div class="overview-value">${avgScore.toFixed(0)}%</div>
+                    <div class="overview-label">Avg Indexability Score</div>
+                </div>
+            </div>
+            <div class="audit-overview-card">
+                <div class="overview-icon"><i class="fas fa-calendar"></i></div>
+                <div class="overview-content">
+                    <div class="overview-value">${date}</div>
+                    <div class="overview-label">Audit Date</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Create audit section tabs
+function createAuditSectionTabs(audit) {
+    const container = document.getElementById('auditSectionsTabs');
+    if (!container) return;
+    
+    const sections = [
+        { id: 'core-web-vitals', label: 'Core Web Vitals', icon: 'fa-tachometer-alt' },
+        { id: 'sitemap', label: 'Sitemap', icon: 'fa-sitemap' },
+        { id: 'robots', label: 'Robots.txt', icon: 'fa-robot' },
+        { id: 'structured-data', label: 'Structured Data', icon: 'fa-code' },
+        { id: 'content', label: 'Content Audit', icon: 'fa-file-alt' },
+        { id: 'mobile', label: 'Mobile', icon: 'fa-mobile-alt' },
+        { id: 'security', label: 'Security', icon: 'fa-shield-alt' },
+        { id: 'page-speed', label: 'Page Speed', icon: 'fa-bolt' },
+        { id: 'link-depth', label: 'Link Depth', icon: 'fa-project-diagram' },
+        { id: 'http-status', label: 'HTTP Status', icon: 'fa-server' },
+        { id: 'javascript', label: 'JavaScript Links', icon: 'fa-js' },
+        { id: 'pagination', label: 'Pagination', icon: 'fa-list' },
+        { id: 'indexability', label: 'Indexability', icon: 'fa-search' },
+        { id: 'top-content', label: 'Top Content', icon: 'fa-star' }
+    ];
+    
+    let html = '<div class="audit-tabs-container">';
+    sections.forEach((section, index) => {
+        html += `
+            <button class="audit-tab-btn ${index === 0 ? 'active' : ''}" 
+                    onclick="showAuditSection('${section.id}', window.auditData)">
+                <i class="fas ${section.icon}"></i> ${section.label}
+            </button>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    // Store audit data globally for tab switching
+    window.auditData = audit;
+}
+
+// Show specific audit section
+function showAuditSection(sectionId, audit) {
+    // Update active tab
+    document.querySelectorAll('.audit-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(sectionId.replace('-', ' ').substring(0, 5))) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Also try to find by onclick attribute
+    document.querySelectorAll('.audit-tab-btn').forEach(btn => {
+        if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${sectionId}'`)) {
+            btn.classList.add('active');
+        }
+    });
+    
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    switch(sectionId) {
+        case 'core-web-vitals':
+            displayCoreWebVitals(audit.core_web_vitals || {});
+            break;
+        case 'sitemap':
+            displaySitemapAnalysis(audit.sitemap_analysis || {});
+            break;
+        case 'robots':
+            displayRobotsAnalysis(audit.robots_analysis || {});
+            break;
+        case 'structured-data':
+            displayStructuredData(audit.structured_data || {});
+            break;
+        case 'content':
+            displayContentAudit(audit.content_audit || {});
+            break;
+        case 'mobile':
+            displayMobileFriendliness(audit.mobile_friendliness || {});
+            break;
+        case 'security':
+            displaySecurityChecks(audit.security_checks || {});
+            break;
+        case 'page-speed':
+            displayPageSpeedFlags(audit.page_speed_flags || {});
+            break;
+        case 'link-depth':
+            displayLinkDepth(audit.link_depth || {});
+            break;
+        case 'http-status':
+            displayHttpStatus(audit.http_status_coverage || {});
+            break;
+        case 'javascript':
+            displayJavaScriptLinks(audit.javascript_links || {});
+            break;
+        case 'pagination':
+            displayPagination(audit.pagination || {});
+            break;
+        case 'indexability':
+            displayIndexability(audit.indexability_scores || {});
+            break;
+        case 'top-content':
+            displayTopContent(audit.top_content_signals || []);
+            break;
+        default:
+            container.innerHTML = '<p>Section not found.</p>';
+    }
+}
+
+// Display Core Web Vitals
+function displayCoreWebVitals(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const avgSize = data.avg_page_size_kb || 0;
+    const avgRequests = data.avg_requests || 0;
+    const avgLoadTime = data.avg_load_time_ms || 0;
+    const blockingScripts = data.blocking_scripts || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-tachometer-alt"></i> Core Web Vitals (Basic Analysis)</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${avgSize.toFixed(1)} KB</div>
+                    <div class="metric-label">Average Page Size</div>
+                    <div class="metric-status ${avgSize > 500 ? 'poor' : avgSize > 200 ? 'average' : 'good'}">
+                        ${avgSize > 500 ? '⚠ Large' : avgSize > 200 ? '⚡ Medium' : '✓ Good'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${avgRequests.toFixed(0)}</div>
+                    <div class="metric-label">Average Requests</div>
+                    <div class="metric-status ${avgRequests > 100 ? 'poor' : avgRequests > 50 ? 'average' : 'good'}">
+                        ${avgRequests > 100 ? '⚠ High' : avgRequests > 50 ? '⚡ Medium' : '✓ Good'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${avgLoadTime.toFixed(0)}ms</div>
+                    <div class="metric-label">Average Load Time</div>
+                    <div class="metric-status ${avgLoadTime > 3000 ? 'poor' : avgLoadTime > 1000 ? 'average' : 'good'}">
+                        ${avgLoadTime > 3000 ? '⚠ Slow' : avgLoadTime > 1000 ? '⚡ Medium' : '✓ Fast'}
+                    </div>
+                </div>
+            </div>
+            
+            ${blockingScripts.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Blocking Scripts (${blockingScripts.length})</h4>
+                    <p>Scripts without async/defer attributes can block page rendering.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Script</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${blockingScripts.slice(0, 50).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td>${truncateUrl(item.script, 60)}</td>
+                                        <td><span class="badge badge-warning">${item.type}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No blocking scripts detected!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Sitemap Analysis
+function displaySitemapAnalysis(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const found = data.sitemap_found || false;
+    const sitemapUrl = data.sitemap_url || '';
+    const sitemapCount = data.sitemap_urls_count || 0;
+    const crawledCount = data.crawled_urls_count || 0;
+    const coverage = data.coverage_percent || 0;
+    const inSitemapNotCrawled = data.in_sitemap_not_crawled || [];
+    const crawledNotInSitemap = data.crawled_not_in_sitemap || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-sitemap"></i> Sitemap Analysis</h3>
+            
+            ${found ? `
+                <div class="success-message">
+                    <i class="fas fa-check-circle"></i>
+                    <p><strong>Sitemap found:</strong> <a href="${sitemapUrl}" target="_blank">${sitemapUrl}</a></p>
+                </div>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">${sitemapCount}</div>
+                        <div class="metric-label">URLs in Sitemap</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${crawledCount}</div>
+                        <div class="metric-label">URLs Crawled</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${coverage.toFixed(1)}%</div>
+                        <div class="metric-label">Coverage</div>
+                        <div class="metric-status ${coverage > 80 ? 'good' : coverage > 50 ? 'average' : 'poor'}">
+                            ${coverage > 80 ? '✓ Good' : coverage > 50 ? '⚡ Medium' : '⚠ Low'}
+                        </div>
+                    </div>
+                </div>
+                
+                ${inSitemapNotCrawled.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-exclamation-triangle"></i> URLs in Sitemap but Not Crawled (${inSitemapNotCrawled.length})</h4>
+                        <p>These URLs are listed in your sitemap but were not found during crawling.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr><th>URL</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${inSitemapNotCrawled.slice(0, 100).map(url => `
+                                        <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${crawledNotInSitemap.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-info-circle"></i> URLs Crawled but Not in Sitemap (${crawledNotInSitemap.length})</h4>
+                        <p>Consider adding these pages to your sitemap for better discoverability.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr><th>URL</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${crawledNotInSitemap.slice(0, 100).map(url => `
+                                        <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+            ` : `
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p><strong>Sitemap not found.</strong> Common locations checked: /sitemap.xml, /sitemap_index.xml</p>
+                    <p>Consider creating a sitemap.xml file to help search engines discover your pages.</p>
+                </div>
+            `}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Robots.txt Analysis
+function displayRobotsAnalysis(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const found = data.found || false;
+    const disallowed = data.disallowed_paths || [];
+    const blockedPages = data.blocked_pages || [];
+    const sitemapLinks = data.sitemap_links || [];
+    const crawlDelay = data.crawl_delay;
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-robot"></i> Robots.txt Analysis</h3>
+            
+            ${found ? `
+                <div class="success-message">
+                    <i class="fas fa-check-circle"></i>
+                    <p><strong>Robots.txt found</strong></p>
+                </div>
+                
+                ${disallowed.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-ban"></i> Disallowed Paths (${disallowed.length})</h4>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Path</th>
+                                        <th>User Agent</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${disallowed.map(item => `
+                                        <tr>
+                                            <td><code>${item.path}</code></td>
+                                            <td>${item.user_agent}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${blockedPages.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-lock"></i> Blocked Pages (${blockedPages.length})</h4>
+                        <p>These pages are blocked by robots.txt and may not be indexed.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page URL</th>
+                                        <th>Blocked By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${blockedPages.slice(0, 100).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                            <td><code>${item.blocked_by}</code></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No pages are blocked by robots.txt</p></div>'}
+                
+                ${sitemapLinks.length > 0 ? `
+                    <div class="audit-info-section">
+                        <h4><i class="fas fa-sitemap"></i> Sitemap Links in Robots.txt</h4>
+                        <ul>
+                            ${sitemapLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+                
+                ${crawlDelay ? `
+                    <div class="audit-info-section">
+                        <h4><i class="fas fa-clock"></i> Crawl Delay</h4>
+                        <p>Crawl delay set to: <strong>${crawlDelay} seconds</strong></p>
+                    </div>
+                ` : ''}
+            ` : `
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p><strong>Robots.txt not found.</strong> Consider creating one to control search engine crawling.</p>
+                </div>
+            `}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Structured Data
+function displayStructuredData(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const totalPages = data.total_pages_with_structured_data || 0;
+    const totalCount = data.structured_data_count || 0;
+    const types = data.types_found || {};
+    const topTypes = data.top_types || [];
+    const errors = data.errors || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-code"></i> Structured Data Analysis</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${totalPages}</div>
+                    <div class="metric-label">Pages with Structured Data</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${totalCount}</div>
+                    <div class="metric-label">Total Structured Data Items</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${Object.keys(types).length}</div>
+                    <div class="metric-label">Unique Types Found</div>
+                </div>
+            </div>
+            
+            ${topTypes.length > 0 ? `
+                <div class="audit-info-section">
+                    <h4><i class="fas fa-list"></i> Top Structured Data Types</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${topTypes.map(([type, count]) => `
+                                    <tr>
+                                        <td><code>${type}</code></td>
+                                        <td>${count}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${errors.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Structured Data Errors (${errors.length})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Error</th>
+                                    <th>Format</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${errors.slice(0, 50).map(error => `
+                                    <tr>
+                                        <td><a href="${error.page}" target="_blank">${truncateUrl(error.page, 50)}</a></td>
+                                        <td>${error.error}</td>
+                                        <td><span class="badge">${error.format}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No structured data errors found!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Content Audit
+function displayContentAudit(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const thinContent = data.thin_content_pages || [];
+    const missingH1 = data.missing_h1 || [];
+    const multipleH1 = data.multiple_h1 || [];
+    const headerIssues = data.header_structure_issues || [];
+    const overOptimized = data.over_optimized || [];
+    const missingInternalLinks = data.missing_internal_links || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-file-alt"></i> Content Audit</h3>
+            
+            <div class="audit-summary-cards">
+                <div class="summary-card-small ${thinContent.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${data.thin_content_count || 0}</div>
+                    <div class="card-label">Thin Content Pages</div>
+                </div>
+                <div class="summary-card-small ${missingH1.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${missingH1.length}</div>
+                    <div class="card-label">Missing H1</div>
+                </div>
+                <div class="summary-card-small ${multipleH1.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${multipleH1.length}</div>
+                    <div class="card-label">Multiple H1</div>
+                </div>
+                <div class="summary-card-small ${overOptimized.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${overOptimized.length}</div>
+                    <div class="card-label">Over-Optimized</div>
+                </div>
+            </div>
+            
+            ${thinContent.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Thin Content Pages (${thinContent.length})</h4>
+                    <p>Pages with less than 300 words may be considered thin content.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Word Count</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${thinContent.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${item.word_count}</td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${missingH1.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing H1 (${missingH1.length})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${missingH1.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${multipleH1.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages with Multiple H1 Tags (${multipleH1.length})</h4>
+                    <p>Each page should have only one H1 tag.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>H1 Count</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${multipleH1.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${item.count}</td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${missingInternalLinks.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing Internal Links (${missingInternalLinks.length})</h4>
+                    <p>Pages with content but no outgoing internal links.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Word Count</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${missingInternalLinks.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${item.word_count}</td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Mobile Friendliness
+function displayMobileFriendliness(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const missingViewport = data.missing_viewport_pages || [];
+    const missingTouchIcons = data.missing_touch_icons_pages || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-mobile-alt"></i> Mobile-Friendliness Analysis</h3>
+            
+            <div class="audit-summary-cards">
+                <div class="summary-card-small ${missingViewport.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${data.missing_viewport_count || 0}</div>
+                    <div class="card-label">Missing Viewport</div>
+                </div>
+                <div class="summary-card-small ${missingTouchIcons.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${data.missing_touch_icons_count || 0}</div>
+                    <div class="card-label">Missing Touch Icons</div>
+                </div>
+            </div>
+            
+            ${missingViewport.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing Viewport Tag (${missingViewport.length})</h4>
+                    <p>The viewport meta tag is essential for mobile responsiveness.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr><th>Page URL</th></tr>
+                            </thead>
+                            <tbody>
+                                ${missingViewport.slice(0, 100).map(url => `
+                                    <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages have viewport tags!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Security Checks
+function displaySecurityChecks(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const httpPages = data.http_pages || [];
+    const mixedContent = data.mixed_content || [];
+    const securityScore = data.security_score || 0;
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-shield-alt"></i> Security Analysis</h3>
+            
+            <div class="security-score-card">
+                <div class="score-circle">
+                    <div class="score-value">${securityScore}</div>
+                    <div class="score-label">Security Score</div>
+                </div>
+            </div>
+            
+            ${httpPages.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> HTTP Pages (${httpPages.length})</h4>
+                    <p>These pages are not using HTTPS. Consider migrating to HTTPS for better security.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${httpPages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${item.url}</a></td>
+                                        <td>${item.status}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages use HTTPS!</p></div>'}
+            
+            ${mixedContent.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Mixed Content (${mixedContent.length})</h4>
+                    <p>HTTPS pages loading HTTP resources can cause security warnings.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Resource</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${mixedContent.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td>${truncateUrl(item.resource, 60)}</td>
+                                        <td>${item.type}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Page Speed Flags
+function displayPageSpeedFlags(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const largeImages = data.large_images || [];
+    const tooManyRedirects = data.too_many_redirects || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-bolt"></i> Page Speed Flags</h3>
+            
+            ${largeImages.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Large/Unoptimized Images (${largeImages.length})</h4>
+                    <p>Images without width/height attributes can cause layout shifts.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Image</th>
+                                    <th>Issue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${largeImages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td>${truncateUrl(item.image, 60)}</td>
+                                        <td>${item.issue}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${tooManyRedirects.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Redirect Chains (${tooManyRedirects.length})</h4>
+                    <p>Multiple redirects can slow down page loading.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>From</th>
+                                    <th>To</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tooManyRedirects.slice(0, 50).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td><a href="${item.redirects_to}" target="_blank">${truncateUrl(item.redirects_to, 50)}</a></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Link Depth
+function displayLinkDepth(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const depths = data.depths || {};
+    const deepPages = data.deep_pages || [];
+    const avgDepth = data.avg_depth || 0;
+    const maxDepth = data.max_depth || 0;
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-project-diagram"></i> Internal Link Depth Analysis</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${avgDepth.toFixed(1)}</div>
+                    <div class="metric-label">Average Depth</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${maxDepth}</div>
+                    <div class="metric-label">Maximum Depth</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${deepPages.length}</div>
+                    <div class="metric-label">Deep Pages (>3 clicks)</div>
+                </div>
+            </div>
+            
+            ${deepPages.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Deep Pages (${deepPages.length})</h4>
+                    <p>Pages that require more than 3 clicks from the homepage may be harder to discover.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Depth (Clicks)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${deepPages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                        <td>${item.depth}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No deep pages detected!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display HTTP Status Coverage
+function displayHttpStatus(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const statusBreakdown = data.status_breakdown || {};
+    const redirectChains = data.redirect_chains || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-server"></i> HTTP Status Code Coverage</h3>
+            
+            <div class="status-breakdown-grid">
+                ${Object.entries(statusBreakdown).map(([status, count]) => {
+                    const statusClass = status === '200' ? 'success' : ['301', '302'].includes(status) ? 'info' : ['404', '500'].includes(status) ? 'danger' : 'warning';
+                    return `
+                        <div class="status-card ${statusClass}">
+                            <div class="status-code">${status}</div>
+                            <div class="status-count">${count}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            
+            ${redirectChains.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exchange-alt"></i> Redirect Chains (${redirectChains.length})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${redirectChains.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.from}" target="_blank">${truncateUrl(item.from, 50)}</a></td>
+                                        <td><a href="${item.to}" target="_blank">${truncateUrl(item.to, 50)}</a></td>
+                                        <td>${item.status}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display JavaScript Links
+function displayJavaScriptLinks(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const jsLinks = data.js_links_details || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fab fa-js"></i> JavaScript Links Detection</h3>
+            
+            <div class="info-message">
+                <i class="fas fa-info-circle"></i>
+                <p>Pages using JavaScript-rendered navigation may not be fully crawlable by search engines.</p>
+            </div>
+            
+            ${jsLinks.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages with JavaScript Links (${data.pages_with_js_links || 0})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Onclick Links</th>
+                                    <th>JavaScript Protocol</th>
+                                    <th>Total JS Links</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${jsLinks.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 60)}</a></td>
+                                        <td>${item.onclick_count}</td>
+                                        <td>${item.javascript_protocol_count}</td>
+                                        <td>${item.total_js_links}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No JavaScript-rendered links detected!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Pagination
+function displayPagination(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const paginationPages = data.pagination_pages || 0;
+    const paginationDetails = data.pagination_details || [];
+    const parameterVariations = data.parameter_variations || {};
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-list"></i> Pagination & Parameter Handling</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${paginationPages}</div>
+                    <div class="metric-label">Pages with Pagination</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${Object.keys(parameterVariations).length}</div>
+                    <div class="metric-label">Parameter Types</div>
+                </div>
+            </div>
+            
+            ${paginationDetails.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-list"></i> Pagination Parameters Detected</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${paginationDetails.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td><code>${item.parameter}</code></td>
+                                        <td>${item.value}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${Object.keys(parameterVariations).length > 0 ? `
+                <div class="audit-info-section">
+                    <h4><i class="fas fa-cog"></i> Parameter Variations</h4>
+                    <p>Consider using rel="next" and rel="prev" for pagination, or canonical tags to avoid duplicate content.</p>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Indexability Scores
+function displayIndexability(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const scores = data.scores || [];
+    const avgScore = data.avg_score || 0;
+    const indexableCount = data.indexable_count || 0;
+    const nonIndexableCount = data.non_indexable_count || 0;
+    
+    // Sort by score
+    const sortedScores = [...scores].sort((a, b) => a.score - b.score);
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-search"></i> Indexability Score Analysis</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${avgScore.toFixed(1)}%</div>
+                    <div class="metric-label">Average Score</div>
+                    <div class="metric-status ${avgScore >= 70 ? 'good' : avgScore >= 50 ? 'average' : 'poor'}">
+                        ${avgScore >= 70 ? '✓ Good' : avgScore >= 50 ? '⚡ Medium' : '⚠ Poor'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${indexableCount}</div>
+                    <div class="metric-label">Indexable Pages</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${nonIndexableCount}</div>
+                    <div class="metric-label">Non-Indexable Pages</div>
+                </div>
+            </div>
+            
+            <div class="audit-issue-section">
+                <h4><i class="fas fa-list"></i> All Pages Indexability Scores</h4>
+                <div class="table-container">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Page URL</th>
+                                <th>Score</th>
+                                <th>Indexable</th>
+                                <th>Issues</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sortedScores.slice(0, 200).map(item => `
+                                <tr>
+                                    <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                    <td>
+                                        <span class="score-badge ${item.score >= 70 ? 'good' : item.score >= 50 ? 'average' : 'poor'}">
+                                            ${item.score}%
+                                        </span>
+                                    </td>
+                                    <td>${item.indexable ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-danger">No</span>'}</td>
+                                    <td>${item.issues.length > 0 ? item.issues.join(', ') : 'None'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Top Content
+function displayTopContent(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const topContent = data || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-star"></i> Top Content by Traffic Signals</h3>
+            
+            <p class="section-description">Pages ranked by potential traffic signals: word count, internal links, and URL depth.</p>
+            
+            <div class="table-container">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Page URL</th>
+                            <th>Title</th>
+                            <th>Score</th>
+                            <th>Word Count</th>
+                            <th>Internal Links</th>
+                            <th>Depth</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${topContent.map((item, index) => `
+                            <tr>
+                                <td><strong>#${index + 1}</strong></td>
+                                <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                <td>${escapeHtml(item.title)}</td>
+                                <td><span class="score-badge good">${item.score.toFixed(1)}</span></td>
+                                <td>${item.word_count}</td>
+                                <td>${item.internal_links}</td>
+                                <td>${item.depth}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
 }
 
 // Display Advanced SEO Audit section
@@ -4973,4 +8359,593 @@ function showDOMDetails(page) {
     `;
     
     modal.style.display = 'block';
+}
+
+// Display Skipped Pages section (similar to Siteliner)
+function displaySkippedPages(data) {
+    const container = document.getElementById('skippedPagesContainer');
+    if (!container) return;
+    
+    const skippedPages = data.skipped_pages || [];
+    
+    if (skippedPages.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No pages were skipped during crawling.</p></div>';
+        return;
+    }
+    
+    // Get page power data if available
+    const pagePowers = data.page_power_stats?.page_powers || {};
+    
+    // Sort by skip reason, then by URL
+    const sortedSkipped = [...skippedPages].sort((a, b) => {
+        if (a.skip_reason !== b.skip_reason) {
+            return a.skip_reason.localeCompare(b.skip_reason);
+        }
+        return a.url.localeCompare(b.url);
+    });
+    
+    // Get unique skip reasons for filter
+    const skipReasons = [...new Set(skippedPages.map(sp => sp.skip_reason))].sort();
+    
+    let html = `
+        <div class="skipped-pages-header">
+            <p class="subtitle">To see complete results for a specific page, click on a row in the table below:</p>
+            <div class="skipped-pages-controls">
+                <div class="filter-group">
+                    <label for="skippedPagesFilter">Filter results by:</label>
+                    <select id="skippedPagesFilter" class="filter-select">
+                        <option value="all">Show All</option>
+                        ${skipReasons.map(reason => `<option value="${reason.replace(/"/g, '&quot;')}">${reason}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table id="skippedPagesTable" class="data-table">
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th class="sortable" data-sort="reason">Skip Reason <i class="fas fa-sort"></i></th>
+                        <th class="sortable" data-sort="power">Page Power</th>
+                        <th class="sortable" data-sort="links">Links In</th>
+                    </tr>
+                </thead>
+                <tbody id="skippedPagesTableBody">
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="pagination-container" id="skippedPagesPagination">
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Store data globally for filtering and pagination
+    window.skippedPagesData = sortedSkipped;
+    window.currentSkippedPage = 1;
+    window.itemsPerPage = 12;
+    
+    // Render table
+    renderSkippedPagesTable();
+    
+    // Add filter event listener
+    const filter = document.getElementById('skippedPagesFilter');
+    if (filter) {
+        filter.addEventListener('change', (e) => {
+            window.currentSkippedPage = 1;
+            renderSkippedPagesTable();
+        });
+    }
+    
+    // Add sort event listeners
+    document.querySelectorAll('#skippedPagesTable .sortable').forEach(header => {
+        header.addEventListener('click', () => {
+            const sortBy = header.dataset.sort;
+            const currentSort = window.skippedPagesSort || { field: null, direction: 'asc' };
+            
+            if (currentSort.field === sortBy) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = sortBy;
+                currentSort.direction = 'asc';
+            }
+            
+            window.skippedPagesSort = currentSort;
+            
+            // Update sort indicators
+            document.querySelectorAll('#skippedPagesTable .sortable i').forEach(icon => {
+                icon.className = 'fas fa-sort';
+            });
+            const icon = header.querySelector('i');
+            if (icon) {
+                icon.className = currentSort.direction === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+            }
+            
+            // Sort data
+            sortSkippedPages();
+            renderSkippedPagesTable();
+        });
+    });
+    
+    function sortSkippedPages() {
+        const sort = window.skippedPagesSort || { field: null, direction: 'asc' };
+        if (!sort.field) return;
+        
+        window.skippedPagesData.sort((a, b) => {
+            let aVal, bVal;
+            
+            switch(sort.field) {
+                case 'reason':
+                    aVal = a.skip_reason || '';
+                    bVal = b.skip_reason || '';
+                    break;
+                case 'power':
+                    aVal = pagePowers[a.url]?.power || 0;
+                    bVal = pagePowers[b.url]?.power || 0;
+                    break;
+                case 'links':
+                    aVal = a.links_in || 0;
+                    bVal = b.links_in || 0;
+                    break;
+                default:
+                    return 0;
+            }
+            
+            if (aVal < bVal) return sort.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sort.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+    
+    function renderSkippedPagesTable() {
+        const tbody = document.getElementById('skippedPagesTableBody');
+        const pagination = document.getElementById('skippedPagesPagination');
+        if (!tbody) return;
+        
+        // Get filter value
+        const filterValue = document.getElementById('skippedPagesFilter')?.value || 'all';
+        
+        // Filter data
+        let filteredData = window.skippedPagesData;
+        if (filterValue !== 'all') {
+            filteredData = window.skippedPagesData.filter(sp => sp.skip_reason === filterValue);
+        }
+        
+        // Pagination
+        const totalPages = Math.ceil(filteredData.length / window.itemsPerPage);
+        const startIndex = (window.currentSkippedPage - 1) * window.itemsPerPage;
+        const endIndex = startIndex + window.itemsPerPage;
+        const pageData = filteredData.slice(startIndex, endIndex);
+        
+        // Render table rows
+        tbody.innerHTML = pageData.map((skipped, index) => {
+            const pagePower = pagePowers[skipped.url]?.power || 0;
+            const linksIn = skipped.links_in || 0;
+            const fullIndex = startIndex + index;
+            
+            // Get reason icon
+            let reasonIcon = 'fas fa-ban';
+            if (skipped.skip_reason.includes('noindex')) {
+                reasonIcon = 'fas fa-robot';
+            } else if (skipped.skip_reason.includes('404')) {
+                reasonIcon = 'fas fa-exclamation-triangle';
+            } else if (skipped.skip_reason.includes('Redirect')) {
+                reasonIcon = 'fas fa-arrow-right';
+            } else if (skipped.skip_reason.includes('character set')) {
+                reasonIcon = 'fas fa-language';
+            }
+            
+            return `
+                <tr class="clickable-row" onclick="showSkippedPageDetails('${skipped.url.replace(/'/g, "\\'")}')">
+                    <td class="url-cell">
+                        <a href="${skipped.url}" target="_blank" onclick="event.stopPropagation();">
+                            ${skipped.url}
+                        </a>
+                    </td>
+                    <td>
+                        <i class="${reasonIcon}"></i> ${skipped.skip_reason}
+                    </td>
+                    <td>${pagePower.toFixed(1)}</td>
+                    <td>${linksIn}</td>
+                </tr>
+            `;
+        }).join('');
+        
+        // Render pagination
+        if (pagination) {
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+            } else {
+                let paginationHTML = '<div class="pagination">';
+                
+                // Previous button
+                if (window.currentSkippedPage > 1) {
+                    paginationHTML += `<button class="pagination-btn" onclick="changeSkippedPage(${window.currentSkippedPage - 1})">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>`;
+                }
+                
+                // Page numbers
+                const maxPagesToShow = 5;
+                let startPage = Math.max(1, window.currentSkippedPage - Math.floor(maxPagesToShow / 2));
+                let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+                
+                if (endPage - startPage < maxPagesToShow - 1) {
+                    startPage = Math.max(1, endPage - maxPagesToShow + 1);
+                }
+                
+                if (startPage > 1) {
+                    paginationHTML += `<button class="pagination-btn" onclick="changeSkippedPage(1)">1</button>`;
+                    if (startPage > 2) {
+                        paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+                    }
+                }
+                
+                for (let i = startPage; i <= endPage; i++) {
+                    paginationHTML += `<button class="pagination-btn ${i === window.currentSkippedPage ? 'active' : ''}" 
+                        onclick="changeSkippedPage(${i})">${i}</button>`;
+                }
+                
+                if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                        paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+                    }
+                    paginationHTML += `<button class="pagination-btn" onclick="changeSkippedPage(${totalPages})">${totalPages}</button>`;
+                }
+                
+                // Next button
+                if (window.currentSkippedPage < totalPages) {
+                    paginationHTML += `<button class="pagination-btn" onclick="changeSkippedPage(${window.currentSkippedPage + 1})">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>`;
+                }
+                
+                paginationHTML += '</div>';
+                paginationHTML += `<div class="pagination-info">Showing ${startIndex + 1}–${Math.min(endIndex, filteredData.length)} of ${filteredData.length} results</div>`;
+                paginationHTML += `<div class="pagination-jump">
+                    <label>Jump to result:</label>
+                    <input type="number" id="skippedPagesJumpInput" min="1" max="${totalPages}" value="${window.currentSkippedPage}">
+                    <button class="pagination-btn" onclick="jumpToSkippedPage()">Go</button>
+                </div>`;
+                
+                pagination.innerHTML = paginationHTML;
+            }
+        }
+    }
+    
+    // Make functions globally available
+    window.changeSkippedPage = function(page) {
+        window.currentSkippedPage = page;
+        renderSkippedPagesTable();
+        // Scroll to top of table
+        document.getElementById('skippedPagesTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    
+    window.jumpToSkippedPage = function() {
+        const input = document.getElementById('skippedPagesJumpInput');
+        if (input) {
+            const page = parseInt(input.value);
+            const filterValue = document.getElementById('skippedPagesFilter')?.value || 'all';
+            let filteredData = window.skippedPagesData;
+            if (filterValue !== 'all') {
+                filteredData = window.skippedPagesData.filter(sp => sp.skip_reason === filterValue);
+            }
+            const totalPages = Math.ceil(filteredData.length / window.itemsPerPage);
+            if (page >= 1 && page <= totalPages) {
+                window.changeSkippedPage(page);
+            }
+        }
+    };
+    
+    window.showSkippedPageDetails = function(url) {
+        // Find the skipped page data
+        const skippedPage = window.skippedPagesData.find(sp => sp.url === url);
+        if (!skippedPage) return;
+        
+        // Show in page modal or create a simple alert
+        const modal = document.getElementById('pageModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        
+        if (modal && modalTitle && modalBody) {
+            modalTitle.textContent = 'Skipped Page Details';
+            modalBody.innerHTML = `
+                <div class="page-details">
+                    <h3>URL</h3>
+                    <p><a href="${skippedPage.url}" target="_blank">${skippedPage.url}</a></p>
+                    
+                    <h3>Skip Reason</h3>
+                    <p>${skippedPage.skip_reason}</p>
+                    
+                    <h3>Status Code</h3>
+                    <p>${skippedPage.status_code || 'N/A'}</p>
+                    
+                    <h3>Links In</h3>
+                    <p>${skippedPage.links_in || 0} internal link(s) point to this page</p>
+                    
+                    <h3>Page Power</h3>
+                    <p>${(pagePowers[skippedPage.url]?.power || 0).toFixed(2)}</p>
+                </div>
+            `;
+            modal.style.display = 'block';
+        } else {
+            alert(`Skipped Page: ${skippedPage.url}\nReason: ${skippedPage.skip_reason}`);
+        }
+    };
+}
+
+// Schema Analyzer Functions
+async function loadSchemaAnalysis() {
+    const container = document.getElementById('schemaAnalyzerContainer');
+    if (!container) return;
+    
+    try {
+        container.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i><p>Loading schema analysis...</p></div>';
+        
+        const response = await fetch(`/api/schema-analysis/${jobId}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+            throw new Error(errorMsg);
+        }
+        
+        const data = await response.json();
+        
+        // Check if response contains error
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        displaySchemaAnalysis(data);
+    } catch (error) {
+        console.error('Error loading schema analysis:', error);
+        const errorMsg = error.message || 'Failed to load schema analysis. Please ensure you have run a crawl with HTML content stored.';
+        container.innerHTML = `
+            <div class="error-container" style="padding: 20px; background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; color: #991b1b;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 1.5rem; margin-bottom: 10px;"></i>
+                <p style="margin: 10px 0;"><strong>Error:</strong> ${errorMsg}</p>
+                <p style="margin: 10px 0; font-size: 0.9rem;">Make sure you have run a crawl recently and that HTML content was stored.</p>
+                <button onclick="loadSchemaAnalysis()" class="btn btn-primary" style="margin-top: 10px;">
+                    <i class="fas fa-redo"></i> Retry
+                </button>
+            </div>
+        `;
+    }
+}
+
+function displaySchemaAnalysis(data) {
+    const container = document.getElementById('schemaAnalyzerContainer');
+    if (!container) return;
+    
+    const totalPages = data.total_schemas || 0;
+    const pagesWithSchema = data.pages_with_schema || 0;
+    const pagesWithoutSchema = data.pages_without_schema || 0;
+    const schemaTypes = data.schema_types_found || [];
+    const schemasByPage = data.schemas_by_page || {};
+    const issues = data.issues || [];
+    const recommendations = data.recommendations || [];
+    const suggestedSchemas = data.suggested_schemas || [];
+    
+    let html = `
+        <!-- Overview Statistics -->
+        <div class="schema-overview">
+            <div class="schema-stat-card">
+                <div class="stat-icon blue">
+                    <i class="fas fa-code"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${totalPages}</h3>
+                    <p>Total Schemas Found</p>
+                </div>
+            </div>
+            <div class="schema-stat-card">
+                <div class="stat-icon green">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${pagesWithSchema}</h3>
+                    <p>Pages With Schema</p>
+                </div>
+            </div>
+            <div class="schema-stat-card">
+                <div class="stat-icon orange">
+                    <i class="fas fa-exclamation-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${pagesWithoutSchema}</h3>
+                    <p>Pages Without Schema</p>
+                </div>
+            </div>
+            <div class="schema-stat-card">
+                <div class="stat-icon purple">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${schemaTypes.length}</h3>
+                    <p>Schema Types Found</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Schema Types Found -->
+        <div class="schema-section">
+            <h3><i class="fas fa-tags"></i> Schema Types Found on Your Site</h3>
+            ${schemaTypes.length > 0 ? `
+                <div class="schema-types-grid">
+                    ${schemaTypes.map(type => `
+                        <div class="schema-type-badge">
+                            <i class="fas fa-code"></i> ${type}
+                        </div>
+                    `).join('')}
+                </div>
+            ` : `
+                <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No schema markup found on your website. Consider adding structured data to improve SEO.</p>
+                </div>
+            `}
+        </div>
+        
+        <!-- Current Schemas by Page -->
+        <div class="schema-section">
+            <h3><i class="fas fa-file-code"></i> Your Current Schemas</h3>
+            ${Object.keys(schemasByPage).length > 0 ? `
+                <div class="schema-pages-list">
+                    ${Object.entries(schemasByPage).slice(0, 20).map(([url, schemas]) => `
+                        <div class="schema-page-item">
+                            <div class="schema-page-header">
+                                <h4><a href="${url}" target="_blank" rel="noopener">${url.length > 80 ? url.substring(0, 80) + '...' : url}</a></h4>
+                                <span class="schema-count-badge">${schemas.length} schema(s)</span>
+                            </div>
+                            <div class="schema-details">
+                                ${schemas.map((schema, idx) => `
+                                    <div class="schema-item">
+                                        <div class="schema-item-header">
+                                            <strong>Schema ${idx + 1}:</strong> ${schema['@type'] || 'Unknown'}
+                                            <button class="btn-small" onclick="toggleSchemaCode('schema-code-${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}')">
+                                                <i class="fas fa-eye"></i> View Code
+                                            </button>
+                                        </div>
+                                        <div class="schema-item-body" id="schema-code-${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}" style="display: none;">
+                                            <pre><code>${JSON.stringify(schema, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${Object.keys(schemasByPage).length > 20 ? `<p class="info-note">Showing first 20 pages. Total: ${Object.keys(schemasByPage).length} pages with schemas.</p>` : ''}
+                </div>
+            ` : `
+                <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No schemas found. Your website doesn't currently have structured data markup.</p>
+                </div>
+            `}
+        </div>
+        
+        <!-- Issues -->
+        ${issues.length > 0 ? `
+            <div class="schema-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Schema Issues Found</h3>
+                <div class="schema-issues-list">
+                    ${issues.slice(0, 50).map(issue => `
+                        <div class="schema-issue-item ${issue.severity}">
+                            <div class="issue-header">
+                                <i class="fas fa-${issue.severity === 'high' ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                <strong>${issue.schema_type}</strong> - <a href="${issue.url}" target="_blank" rel="noopener">${issue.url.length > 60 ? issue.url.substring(0, 60) + '...' : issue.url}</a>
+                            </div>
+                            <div class="issue-body">
+                                <p>${issue.message}</p>
+                                ${issue.missing_properties ? `
+                                    <div class="missing-props">
+                                        <strong>Missing Properties:</strong>
+                                        <ul>
+                                            ${issue.missing_properties.map(prop => `<li>${prop}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${issues.length > 50 ? `<p class="info-note">Showing first 50 issues. Total: ${issues.length} issues found.</p>` : ''}
+                </div>
+            </div>
+        ` : ''}
+        
+        <!-- Recommendations -->
+        ${recommendations.length > 0 ? `
+            <div class="schema-section">
+                <h3><i class="fas fa-lightbulb"></i> Recommendations & Updated Schemas</h3>
+                <div class="schema-recommendations-list">
+                    ${recommendations.slice(0, 30).map((rec, idx) => `
+                        <div class="schema-recommendation-item">
+                            <div class="recommendation-header">
+                                <i class="fas fa-star"></i>
+                                <strong>${rec.schema_type || 'General Recommendation'}</strong>
+                                ${rec.url ? `<a href="${rec.url}" target="_blank" rel="noopener" class="rec-url">${rec.url.length > 50 ? rec.url.substring(0, 50) + '...' : rec.url}</a>` : ''}
+                            </div>
+                            <div class="recommendation-body">
+                                <p><strong>${rec.message || rec.description || ''}</strong></p>
+                                ${rec.suggested_schema ? `
+                                    <div class="recommendation-schema">
+                                        <button class="btn-small" onclick="toggleSchemaCode('rec-${idx}')">
+                                            <i class="fas fa-code"></i> Show Updated Schema
+                                        </button>
+                                        <div id="rec-${idx}" style="display: none; margin-top: 10px;">
+                                            <pre><code>${JSON.stringify(rec.suggested_schema, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                ${rec.current_schema ? `
+                                    <div class="current-schema" style="margin-top: 10px;">
+                                        <button class="btn-small" onclick="toggleSchemaCode('current-${idx}')">
+                                            <i class="fas fa-code"></i> Show Current Schema
+                                        </button>
+                                        <div id="current-${idx}" style="display: none; margin-top: 10px;">
+                                            <pre><code>${JSON.stringify(rec.current_schema, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${recommendations.length > 30 ? `<p class="info-note">Showing first 30 recommendations. Total: ${recommendations.length} recommendations.</p>` : ''}
+                </div>
+            </div>
+        ` : ''}
+        
+        <!-- Suggested Missing Schemas -->
+        ${suggestedSchemas.length > 0 ? `
+            <div class="schema-section">
+                <h3><i class="fas fa-plus-circle"></i> Suggested Schemas You Can Add</h3>
+                <div class="suggested-schemas-list">
+                    ${suggestedSchemas.map((suggestion, idx) => `
+                        <div class="suggested-schema-item">
+                            <div class="suggested-header">
+                                <i class="fas fa-code"></i>
+                                <strong>${suggestion.schema_type}</strong>
+                                <span class="priority-badge ${suggestion.priority}">${suggestion.priority}</span>
+                            </div>
+                            <div class="suggested-body">
+                                <p>${suggestion.description}</p>
+                                ${suggestion.example ? `
+                                    <div class="example-schema">
+                                        <button class="btn-small" onclick="toggleSchemaCode('suggestion-${idx}')">
+                                            <i class="fas fa-code"></i> View Example Schema
+                                        </button>
+                                        <div id="suggestion-${idx}" style="display: none; margin-top: 10px;">
+                                            <pre><code>${JSON.stringify(suggestion.example, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : ''}
+    `;
+    
+    container.innerHTML = html;
+}
+
+function toggleSchemaCode(id) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.style.display = element.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+// Function to show schema analyzer section (called from toolbar button)
+function showSchemaAnalyzer() {
+    if (typeof showSection === 'function') {
+        showSection('schema-analyzer');
+    } else {
+        // Fallback: redirect to results page or show message
+        alert('Please run a crawl first to analyze schemas. Then navigate to the Schema Analyzer tab in the results.');
+    }
 }

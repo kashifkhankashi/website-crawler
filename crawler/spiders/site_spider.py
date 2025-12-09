@@ -2,7 +2,7 @@
 Main spider for crawling internal pages of a website.
 """
 import re
-from typing import Set, List, Optional
+from typing import Set, List, Optional, Dict
 from urllib.parse import urljoin, urlparse, urlunparse
 from datetime import datetime
 
@@ -77,6 +77,9 @@ class SiteSpider(scrapy.Spider):
             'discovered_urls': 0,
         }
         
+        # Track skipped pages with reasons (similar to Siteliner)
+        self.skipped_pages: List[Dict] = []
+        
         # Initialize performance analyzer if available
         self.performance_analyzer = None
         if PERFORMANCE_ANALYZER_AVAILABLE:
@@ -105,6 +108,19 @@ class SiteSpider(scrapy.Spider):
         # Skip if already visited (using normalized URL)
         if normalized_url in self.visited_urls:
             return
+        
+        # Check for skip reasons BEFORE processing
+        skip_reason = self._check_skip_reasons(response, normalized_url)
+        if skip_reason:
+            # Track as skipped page
+            self.skipped_pages.append({
+                'url': normalized_url,
+                'skip_reason': skip_reason,
+                'status_code': response.status,
+                'links_in': 0  # Will be calculated later
+            })
+            self.discovered_urls.add(normalized_url)
+            return  # Don't process this page
         
         self.visited_urls.add(normalized_url)
         self.discovered_urls.add(normalized_url)
@@ -384,6 +400,15 @@ class SiteSpider(scrapy.Spider):
             # Get line number (approximate)
             line_number = self._get_line_number(response.text, str(link))
             
+            # Extract link attributes (rel, target, etc.) for external links
+            rel_attr = link.get('rel', [])
+            if isinstance(rel_attr, str):
+                rel_attr = [r.strip() for r in rel_attr.split()]
+            elif not isinstance(rel_attr, list):
+                rel_attr = []
+            
+            target_attr = link.get('target', '')
+            
             link_data = {
                 'url': normalized,
                 'anchor_text': anchor_text,
@@ -392,7 +417,9 @@ class SiteSpider(scrapy.Spider):
                 'parent_id': parent_id,
                 'css_selector': css_selector,
                 'context': context,
-                'line_number': line_number
+                'line_number': line_number,
+                'rel': rel_attr,  # Add rel attributes
+                'target': target_attr  # Add target attribute
             }
             
             # Check if internal or external
@@ -552,14 +579,92 @@ class SiteSpider(scrapy.Spider):
         except Exception:
             return None
     
+    def _check_skip_reasons(self, response: HtmlResponse, normalized_url: str) -> Optional[str]:
+        """
+        Check if a page should be skipped and return the reason.
+        Similar to Siteliner's skipped pages feature.
+        
+        Args:
+            response: The HTTP response
+            normalized_url: Normalized URL
+            
+        Returns:
+            Skip reason string if page should be skipped, None otherwise
+        """
+        # Check for 404 errors
+        if response.status == 404:
+            return "Error 404 - Not Found"
+        
+        # Check for redirects (301, 302, etc.)
+        if response.status in [301, 302, 303, 307, 308]:
+            redirect_url = response.headers.get('Location', b'').decode('utf-8', errors='ignore')
+            if redirect_url:
+                # Make absolute if relative
+                from urllib.parse import urljoin
+                absolute_redirect = urljoin(response.url, redirect_url)
+                return f"HTTP Header Redirect {absolute_redirect}"
+        
+        # Check for robots meta noindex
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, 'lxml')
+            robots_meta = soup.find('meta', attrs={'name': 'robots'})
+            if robots_meta:
+                robots_content = robots_meta.get('content', '').lower()
+                if 'noindex' in robots_content:
+                    return "Robots meta tag contains noindex instruction"
+        except Exception:
+            pass  # If parsing fails, continue with normal processing
+        
+        # Check for character set issues
+        try:
+            # Try to detect encoding issues
+            content_type = response.headers.get('Content-Type', b'').decode('utf-8', errors='ignore').lower()
+            if 'charset' in content_type:
+                # Check if we can decode the response
+                try:
+                    response.text  # This will raise if encoding is wrong
+                except (UnicodeDecodeError, LookupError):
+                    return "The character set of this page was not recognized."
+        except Exception:
+            pass
+        
+        return None
+    
     def _handle_error(self, failure):
         """
         Handle request errors.
+        Track errors as skipped pages.
         
         Args:
             failure: The failure object
         """
-        self.logger.error(f"Request failed: {failure.request.url} - {failure.value}")
+        url = failure.request.url
+        normalized_url = self._normalize_url(url)
+        if normalized_url:
+            error_msg = str(failure.value) if failure.value else "Unknown error"
+            
+            # Determine skip reason from error type
+            skip_reason = "Error accessing page"
+            if "404" in error_msg or "Not Found" in error_msg:
+                skip_reason = "Error 404 - Not Found"
+            elif "timeout" in error_msg.lower():
+                skip_reason = "Request Timeout"
+            elif "connection" in error_msg.lower():
+                skip_reason = "Connection Error"
+            else:
+                skip_reason = f"Error: {error_msg[:100]}"  # Limit length
+            
+            # Track as skipped page
+            if normalized_url not in [sp['url'] for sp in self.skipped_pages]:
+                self.skipped_pages.append({
+                    'url': normalized_url,
+                    'skip_reason': skip_reason,
+                    'status_code': 0,
+                    'links_in': 0
+                })
+        
+        self.logger.error(f"Request failed: {url} - {failure.value}")
     
     def closed(self, reason):
         """
