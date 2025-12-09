@@ -1033,6 +1033,61 @@ def keyword_search():
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 
+@app.route('/api/schema-analysis/<job_id>')
+@login_required
+def get_schema_analysis(job_id: str):
+    """Analyze schema markup from crawl results."""
+    try:
+        # Load crawl results
+        json_path = None
+        base_output = app.config['UPLOAD_FOLDER']
+        
+        # Try to find the JSON report
+        possible_paths = [
+            os.path.join(base_output, job_id, 'report.json'),
+            os.path.join(base_output, 'report.json'),
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                json_path = path
+                break
+        
+        if not json_path or not os.path.exists(json_path):
+            return jsonify({'error': 'Crawl results not found. Please run a crawl first.'}), 404
+        
+        # Load crawl data
+        with open(json_path, 'r', encoding='utf-8') as f:
+            crawl_data = json.load(f)
+        
+        # Check if crawl data has pages
+        if not crawl_data.get('pages'):
+            return jsonify({'error': 'No pages found in crawl results. Please run a crawl first.'}), 400
+        
+        # Analyze schemas
+        try:
+            from schema_analyzer import SchemaAnalyzer
+            analyzer = SchemaAnalyzer()
+            analysis_results = analyzer.analyze_crawl_results(crawl_data)
+            
+            return jsonify(analysis_results)
+        except ImportError as e:
+            return jsonify({'error': f'Schema analyzer module not found: {str(e)}'}), 500
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Error analyzing schemas: {str(e)}'}), 500
+        
+    except FileNotFoundError:
+        return jsonify({'error': 'Crawl results file not found. Please run a crawl first.'}), 404
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Invalid JSON in crawl results: {str(e)}'}), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Error loading crawl results: {str(e)}'}), 500
+
+
 @app.route('/api/export-competitor-analysis', methods=['POST'])
 @login_required
 def export_competitor_analysis():

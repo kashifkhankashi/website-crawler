@@ -424,6 +424,7 @@ function updateActiveNavItem(activeId) {
     }
 }
 
+
 // Start keyword research
 async function startKeywordResearch(event) {
     event.preventDefault();

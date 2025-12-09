@@ -192,6 +192,8 @@ function displayAllSections(data) {
         console.error('Error displaying DOM analysis:', e);
     }
     
+    // Schema analyzer will load when section is shown
+    
     try {
         updateSeoScoreSummary(data);
     } catch (e) {
@@ -3741,6 +3743,10 @@ function filterTable() {
 
 // Show section
 function showSection(sectionName) {
+    // Load schema analysis when schema analyzer section is shown
+    if (sectionName === 'schema-analyzer') {
+        loadSchemaAnalysis();
+    }
     // Hide all sections
     document.querySelectorAll('.content-section').forEach(section => {
         section.classList.remove('active');
@@ -3760,11 +3766,12 @@ function showSection(sectionName) {
     // Add active class to clicked tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
         const btnText = btn.textContent.toLowerCase().trim();
-        const sectionMatch = sectionName.replace('-', ' ').replace('-', ' ');
+        const sectionMatch = sectionName.replace(/-/g, ' ');
         if (btnText.includes(sectionMatch) || 
             (sectionName === 'external-links' && btnText.includes('external')) ||
             (sectionName === 'broken-links' && btnText.includes('broken')) ||
-            (sectionName === 'summary-report' && btnText.includes('summary'))) {
+            (sectionName === 'summary-report' && btnText.includes('summary')) ||
+            (sectionName === 'schema-analyzer' && btnText.includes('schema'))) {
             btn.classList.add('active');
         }
     });
@@ -8667,4 +8674,278 @@ function displaySkippedPages(data) {
             alert(`Skipped Page: ${skippedPage.url}\nReason: ${skippedPage.skip_reason}`);
         }
     };
+}
+
+// Schema Analyzer Functions
+async function loadSchemaAnalysis() {
+    const container = document.getElementById('schemaAnalyzerContainer');
+    if (!container) return;
+    
+    try {
+        container.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i><p>Loading schema analysis...</p></div>';
+        
+        const response = await fetch(`/api/schema-analysis/${jobId}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+            throw new Error(errorMsg);
+        }
+        
+        const data = await response.json();
+        
+        // Check if response contains error
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        displaySchemaAnalysis(data);
+    } catch (error) {
+        console.error('Error loading schema analysis:', error);
+        const errorMsg = error.message || 'Failed to load schema analysis. Please ensure you have run a crawl with HTML content stored.';
+        container.innerHTML = `
+            <div class="error-container" style="padding: 20px; background: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; color: #991b1b;">
+                <i class="fas fa-exclamation-triangle" style="font-size: 1.5rem; margin-bottom: 10px;"></i>
+                <p style="margin: 10px 0;"><strong>Error:</strong> ${errorMsg}</p>
+                <p style="margin: 10px 0; font-size: 0.9rem;">Make sure you have run a crawl recently and that HTML content was stored.</p>
+                <button onclick="loadSchemaAnalysis()" class="btn btn-primary" style="margin-top: 10px;">
+                    <i class="fas fa-redo"></i> Retry
+                </button>
+            </div>
+        `;
+    }
+}
+
+function displaySchemaAnalysis(data) {
+    const container = document.getElementById('schemaAnalyzerContainer');
+    if (!container) return;
+    
+    const totalPages = data.total_schemas || 0;
+    const pagesWithSchema = data.pages_with_schema || 0;
+    const pagesWithoutSchema = data.pages_without_schema || 0;
+    const schemaTypes = data.schema_types_found || [];
+    const schemasByPage = data.schemas_by_page || {};
+    const issues = data.issues || [];
+    const recommendations = data.recommendations || [];
+    const suggestedSchemas = data.suggested_schemas || [];
+    
+    let html = `
+        <!-- Overview Statistics -->
+        <div class="schema-overview">
+            <div class="schema-stat-card">
+                <div class="stat-icon blue">
+                    <i class="fas fa-code"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${totalPages}</h3>
+                    <p>Total Schemas Found</p>
+                </div>
+            </div>
+            <div class="schema-stat-card">
+                <div class="stat-icon green">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${pagesWithSchema}</h3>
+                    <p>Pages With Schema</p>
+                </div>
+            </div>
+            <div class="schema-stat-card">
+                <div class="stat-icon orange">
+                    <i class="fas fa-exclamation-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${pagesWithoutSchema}</h3>
+                    <p>Pages Without Schema</p>
+                </div>
+            </div>
+            <div class="schema-stat-card">
+                <div class="stat-icon purple">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>${schemaTypes.length}</h3>
+                    <p>Schema Types Found</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Schema Types Found -->
+        <div class="schema-section">
+            <h3><i class="fas fa-tags"></i> Schema Types Found on Your Site</h3>
+            ${schemaTypes.length > 0 ? `
+                <div class="schema-types-grid">
+                    ${schemaTypes.map(type => `
+                        <div class="schema-type-badge">
+                            <i class="fas fa-code"></i> ${type}
+                        </div>
+                    `).join('')}
+                </div>
+            ` : `
+                <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No schema markup found on your website. Consider adding structured data to improve SEO.</p>
+                </div>
+            `}
+        </div>
+        
+        <!-- Current Schemas by Page -->
+        <div class="schema-section">
+            <h3><i class="fas fa-file-code"></i> Your Current Schemas</h3>
+            ${Object.keys(schemasByPage).length > 0 ? `
+                <div class="schema-pages-list">
+                    ${Object.entries(schemasByPage).slice(0, 20).map(([url, schemas]) => `
+                        <div class="schema-page-item">
+                            <div class="schema-page-header">
+                                <h4><a href="${url}" target="_blank" rel="noopener">${url.length > 80 ? url.substring(0, 80) + '...' : url}</a></h4>
+                                <span class="schema-count-badge">${schemas.length} schema(s)</span>
+                            </div>
+                            <div class="schema-details">
+                                ${schemas.map((schema, idx) => `
+                                    <div class="schema-item">
+                                        <div class="schema-item-header">
+                                            <strong>Schema ${idx + 1}:</strong> ${schema['@type'] || 'Unknown'}
+                                            <button class="btn-small" onclick="toggleSchemaCode('schema-code-${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}')">
+                                                <i class="fas fa-eye"></i> View Code
+                                            </button>
+                                        </div>
+                                        <div class="schema-item-body" id="schema-code-${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}" style="display: none;">
+                                            <pre><code>${JSON.stringify(schema, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${Object.keys(schemasByPage).length > 20 ? `<p class="info-note">Showing first 20 pages. Total: ${Object.keys(schemasByPage).length} pages with schemas.</p>` : ''}
+                </div>
+            ` : `
+                <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No schemas found. Your website doesn't currently have structured data markup.</p>
+                </div>
+            `}
+        </div>
+        
+        <!-- Issues -->
+        ${issues.length > 0 ? `
+            <div class="schema-section">
+                <h3><i class="fas fa-exclamation-triangle"></i> Schema Issues Found</h3>
+                <div class="schema-issues-list">
+                    ${issues.slice(0, 50).map(issue => `
+                        <div class="schema-issue-item ${issue.severity}">
+                            <div class="issue-header">
+                                <i class="fas fa-${issue.severity === 'high' ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
+                                <strong>${issue.schema_type}</strong> - <a href="${issue.url}" target="_blank" rel="noopener">${issue.url.length > 60 ? issue.url.substring(0, 60) + '...' : issue.url}</a>
+                            </div>
+                            <div class="issue-body">
+                                <p>${issue.message}</p>
+                                ${issue.missing_properties ? `
+                                    <div class="missing-props">
+                                        <strong>Missing Properties:</strong>
+                                        <ul>
+                                            ${issue.missing_properties.map(prop => `<li>${prop}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${issues.length > 50 ? `<p class="info-note">Showing first 50 issues. Total: ${issues.length} issues found.</p>` : ''}
+                </div>
+            </div>
+        ` : ''}
+        
+        <!-- Recommendations -->
+        ${recommendations.length > 0 ? `
+            <div class="schema-section">
+                <h3><i class="fas fa-lightbulb"></i> Recommendations & Updated Schemas</h3>
+                <div class="schema-recommendations-list">
+                    ${recommendations.slice(0, 30).map((rec, idx) => `
+                        <div class="schema-recommendation-item">
+                            <div class="recommendation-header">
+                                <i class="fas fa-star"></i>
+                                <strong>${rec.schema_type || 'General Recommendation'}</strong>
+                                ${rec.url ? `<a href="${rec.url}" target="_blank" rel="noopener" class="rec-url">${rec.url.length > 50 ? rec.url.substring(0, 50) + '...' : rec.url}</a>` : ''}
+                            </div>
+                            <div class="recommendation-body">
+                                <p><strong>${rec.message || rec.description || ''}</strong></p>
+                                ${rec.suggested_schema ? `
+                                    <div class="recommendation-schema">
+                                        <button class="btn-small" onclick="toggleSchemaCode('rec-${idx}')">
+                                            <i class="fas fa-code"></i> Show Updated Schema
+                                        </button>
+                                        <div id="rec-${idx}" style="display: none; margin-top: 10px;">
+                                            <pre><code>${JSON.stringify(rec.suggested_schema, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                ${rec.current_schema ? `
+                                    <div class="current-schema" style="margin-top: 10px;">
+                                        <button class="btn-small" onclick="toggleSchemaCode('current-${idx}')">
+                                            <i class="fas fa-code"></i> Show Current Schema
+                                        </button>
+                                        <div id="current-${idx}" style="display: none; margin-top: 10px;">
+                                            <pre><code>${JSON.stringify(rec.current_schema, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${recommendations.length > 30 ? `<p class="info-note">Showing first 30 recommendations. Total: ${recommendations.length} recommendations.</p>` : ''}
+                </div>
+            </div>
+        ` : ''}
+        
+        <!-- Suggested Missing Schemas -->
+        ${suggestedSchemas.length > 0 ? `
+            <div class="schema-section">
+                <h3><i class="fas fa-plus-circle"></i> Suggested Schemas You Can Add</h3>
+                <div class="suggested-schemas-list">
+                    ${suggestedSchemas.map((suggestion, idx) => `
+                        <div class="suggested-schema-item">
+                            <div class="suggested-header">
+                                <i class="fas fa-code"></i>
+                                <strong>${suggestion.schema_type}</strong>
+                                <span class="priority-badge ${suggestion.priority}">${suggestion.priority}</span>
+                            </div>
+                            <div class="suggested-body">
+                                <p>${suggestion.description}</p>
+                                ${suggestion.example ? `
+                                    <div class="example-schema">
+                                        <button class="btn-small" onclick="toggleSchemaCode('suggestion-${idx}')">
+                                            <i class="fas fa-code"></i> View Example Schema
+                                        </button>
+                                        <div id="suggestion-${idx}" style="display: none; margin-top: 10px;">
+                                            <pre><code>${JSON.stringify(suggestion.example, null, 2)}</code></pre>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : ''}
+    `;
+    
+    container.innerHTML = html;
+}
+
+function toggleSchemaCode(id) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.style.display = element.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+// Function to show schema analyzer section (called from toolbar button)
+function showSchemaAnalyzer() {
+    if (typeof showSection === 'function') {
+        showSection('schema-analyzer');
+    } else {
+        // Fallback: redirect to results page or show message
+        alert('Please run a crawl first to analyze schemas. Then navigate to the Schema Analyzer tab in the results.');
+    }
 }
