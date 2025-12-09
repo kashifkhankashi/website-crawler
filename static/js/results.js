@@ -168,6 +168,12 @@ function displayAllSections(data) {
     }
     
     try {
+        displayProfessionalAudit(data);
+    } catch (e) {
+        console.error('Error displaying professional audit:', e);
+    }
+    
+    try {
         displayPagePower(data);
     } catch (e) {
         console.error('Error displaying page power:', e);
@@ -6605,6 +6611,1203 @@ function showCanonicalDetails(pageUrl) {
         </div>
     `;
     modal.style.display = 'block';
+}
+
+// Display Professional SEO Audit
+function displayProfessionalAudit(data) {
+    const audit = data.professional_audit || {};
+    if (!audit || Object.keys(audit).length === 0) {
+        const overview = document.getElementById('auditOverview');
+        const content = document.getElementById('auditContent');
+        if (overview) {
+            overview.innerHTML = '<div class="info-message"><i class="fas fa-info-circle"></i><p>Professional audit data not available. Run a new crawl to generate audit results.</p></div>';
+        }
+        if (content) {
+            content.innerHTML = '';
+        }
+        return;
+    }
+    
+    // Display overview
+    displayAuditOverview(audit);
+    
+    // Create section tabs
+    createAuditSectionTabs(audit);
+    
+    // Display default section
+    showAuditSection('core-web-vitals', audit);
+}
+
+// Display audit overview
+function displayAuditOverview(audit) {
+    const container = document.getElementById('auditOverview');
+    if (!container) return;
+    
+    const totalPages = audit.total_pages || 0;
+    const auditDate = audit.audit_date || new Date().toISOString();
+    const date = new Date(auditDate).toLocaleDateString();
+    
+    // Calculate overall score
+    const indexability = audit.indexability_scores || {};
+    const avgScore = indexability.avg_score || 0;
+    
+    let html = `
+        <div class="audit-overview-grid">
+            <div class="audit-overview-card">
+                <div class="overview-icon"><i class="fas fa-file-alt"></i></div>
+                <div class="overview-content">
+                    <div class="overview-value">${totalPages}</div>
+                    <div class="overview-label">Pages Analyzed</div>
+                </div>
+            </div>
+            <div class="audit-overview-card">
+                <div class="overview-icon"><i class="fas fa-chart-line"></i></div>
+                <div class="overview-content">
+                    <div class="overview-value">${avgScore.toFixed(0)}%</div>
+                    <div class="overview-label">Avg Indexability Score</div>
+                </div>
+            </div>
+            <div class="audit-overview-card">
+                <div class="overview-icon"><i class="fas fa-calendar"></i></div>
+                <div class="overview-content">
+                    <div class="overview-value">${date}</div>
+                    <div class="overview-label">Audit Date</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Create audit section tabs
+function createAuditSectionTabs(audit) {
+    const container = document.getElementById('auditSectionsTabs');
+    if (!container) return;
+    
+    const sections = [
+        { id: 'core-web-vitals', label: 'Core Web Vitals', icon: 'fa-tachometer-alt' },
+        { id: 'sitemap', label: 'Sitemap', icon: 'fa-sitemap' },
+        { id: 'robots', label: 'Robots.txt', icon: 'fa-robot' },
+        { id: 'structured-data', label: 'Structured Data', icon: 'fa-code' },
+        { id: 'content', label: 'Content Audit', icon: 'fa-file-alt' },
+        { id: 'mobile', label: 'Mobile', icon: 'fa-mobile-alt' },
+        { id: 'security', label: 'Security', icon: 'fa-shield-alt' },
+        { id: 'page-speed', label: 'Page Speed', icon: 'fa-bolt' },
+        { id: 'link-depth', label: 'Link Depth', icon: 'fa-project-diagram' },
+        { id: 'http-status', label: 'HTTP Status', icon: 'fa-server' },
+        { id: 'javascript', label: 'JavaScript Links', icon: 'fa-js' },
+        { id: 'pagination', label: 'Pagination', icon: 'fa-list' },
+        { id: 'indexability', label: 'Indexability', icon: 'fa-search' },
+        { id: 'top-content', label: 'Top Content', icon: 'fa-star' }
+    ];
+    
+    let html = '<div class="audit-tabs-container">';
+    sections.forEach((section, index) => {
+        html += `
+            <button class="audit-tab-btn ${index === 0 ? 'active' : ''}" 
+                    onclick="showAuditSection('${section.id}', window.auditData)">
+                <i class="fas ${section.icon}"></i> ${section.label}
+            </button>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    // Store audit data globally for tab switching
+    window.auditData = audit;
+}
+
+// Show specific audit section
+function showAuditSection(sectionId, audit) {
+    // Update active tab
+    document.querySelectorAll('.audit-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(sectionId.replace('-', ' ').substring(0, 5))) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Also try to find by onclick attribute
+    document.querySelectorAll('.audit-tab-btn').forEach(btn => {
+        if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${sectionId}'`)) {
+            btn.classList.add('active');
+        }
+    });
+    
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    switch(sectionId) {
+        case 'core-web-vitals':
+            displayCoreWebVitals(audit.core_web_vitals || {});
+            break;
+        case 'sitemap':
+            displaySitemapAnalysis(audit.sitemap_analysis || {});
+            break;
+        case 'robots':
+            displayRobotsAnalysis(audit.robots_analysis || {});
+            break;
+        case 'structured-data':
+            displayStructuredData(audit.structured_data || {});
+            break;
+        case 'content':
+            displayContentAudit(audit.content_audit || {});
+            break;
+        case 'mobile':
+            displayMobileFriendliness(audit.mobile_friendliness || {});
+            break;
+        case 'security':
+            displaySecurityChecks(audit.security_checks || {});
+            break;
+        case 'page-speed':
+            displayPageSpeedFlags(audit.page_speed_flags || {});
+            break;
+        case 'link-depth':
+            displayLinkDepth(audit.link_depth || {});
+            break;
+        case 'http-status':
+            displayHttpStatus(audit.http_status_coverage || {});
+            break;
+        case 'javascript':
+            displayJavaScriptLinks(audit.javascript_links || {});
+            break;
+        case 'pagination':
+            displayPagination(audit.pagination || {});
+            break;
+        case 'indexability':
+            displayIndexability(audit.indexability_scores || {});
+            break;
+        case 'top-content':
+            displayTopContent(audit.top_content_signals || []);
+            break;
+        default:
+            container.innerHTML = '<p>Section not found.</p>';
+    }
+}
+
+// Display Core Web Vitals
+function displayCoreWebVitals(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const avgSize = data.avg_page_size_kb || 0;
+    const avgRequests = data.avg_requests || 0;
+    const avgLoadTime = data.avg_load_time_ms || 0;
+    const blockingScripts = data.blocking_scripts || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-tachometer-alt"></i> Core Web Vitals (Basic Analysis)</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${avgSize.toFixed(1)} KB</div>
+                    <div class="metric-label">Average Page Size</div>
+                    <div class="metric-status ${avgSize > 500 ? 'poor' : avgSize > 200 ? 'average' : 'good'}">
+                        ${avgSize > 500 ? '⚠ Large' : avgSize > 200 ? '⚡ Medium' : '✓ Good'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${avgRequests.toFixed(0)}</div>
+                    <div class="metric-label">Average Requests</div>
+                    <div class="metric-status ${avgRequests > 100 ? 'poor' : avgRequests > 50 ? 'average' : 'good'}">
+                        ${avgRequests > 100 ? '⚠ High' : avgRequests > 50 ? '⚡ Medium' : '✓ Good'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${avgLoadTime.toFixed(0)}ms</div>
+                    <div class="metric-label">Average Load Time</div>
+                    <div class="metric-status ${avgLoadTime > 3000 ? 'poor' : avgLoadTime > 1000 ? 'average' : 'good'}">
+                        ${avgLoadTime > 3000 ? '⚠ Slow' : avgLoadTime > 1000 ? '⚡ Medium' : '✓ Fast'}
+                    </div>
+                </div>
+            </div>
+            
+            ${blockingScripts.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Blocking Scripts (${blockingScripts.length})</h4>
+                    <p>Scripts without async/defer attributes can block page rendering.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Script</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${blockingScripts.slice(0, 50).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td>${truncateUrl(item.script, 60)}</td>
+                                        <td><span class="badge badge-warning">${item.type}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No blocking scripts detected!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Sitemap Analysis
+function displaySitemapAnalysis(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const found = data.sitemap_found || false;
+    const sitemapUrl = data.sitemap_url || '';
+    const sitemapCount = data.sitemap_urls_count || 0;
+    const crawledCount = data.crawled_urls_count || 0;
+    const coverage = data.coverage_percent || 0;
+    const inSitemapNotCrawled = data.in_sitemap_not_crawled || [];
+    const crawledNotInSitemap = data.crawled_not_in_sitemap || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-sitemap"></i> Sitemap Analysis</h3>
+            
+            ${found ? `
+                <div class="success-message">
+                    <i class="fas fa-check-circle"></i>
+                    <p><strong>Sitemap found:</strong> <a href="${sitemapUrl}" target="_blank">${sitemapUrl}</a></p>
+                </div>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">${sitemapCount}</div>
+                        <div class="metric-label">URLs in Sitemap</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${crawledCount}</div>
+                        <div class="metric-label">URLs Crawled</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${coverage.toFixed(1)}%</div>
+                        <div class="metric-label">Coverage</div>
+                        <div class="metric-status ${coverage > 80 ? 'good' : coverage > 50 ? 'average' : 'poor'}">
+                            ${coverage > 80 ? '✓ Good' : coverage > 50 ? '⚡ Medium' : '⚠ Low'}
+                        </div>
+                    </div>
+                </div>
+                
+                ${inSitemapNotCrawled.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-exclamation-triangle"></i> URLs in Sitemap but Not Crawled (${inSitemapNotCrawled.length})</h4>
+                        <p>These URLs are listed in your sitemap but were not found during crawling.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr><th>URL</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${inSitemapNotCrawled.slice(0, 100).map(url => `
+                                        <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${crawledNotInSitemap.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-info-circle"></i> URLs Crawled but Not in Sitemap (${crawledNotInSitemap.length})</h4>
+                        <p>Consider adding these pages to your sitemap for better discoverability.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr><th>URL</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${crawledNotInSitemap.slice(0, 100).map(url => `
+                                        <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+            ` : `
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p><strong>Sitemap not found.</strong> Common locations checked: /sitemap.xml, /sitemap_index.xml</p>
+                    <p>Consider creating a sitemap.xml file to help search engines discover your pages.</p>
+                </div>
+            `}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Robots.txt Analysis
+function displayRobotsAnalysis(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const found = data.found || false;
+    const disallowed = data.disallowed_paths || [];
+    const blockedPages = data.blocked_pages || [];
+    const sitemapLinks = data.sitemap_links || [];
+    const crawlDelay = data.crawl_delay;
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-robot"></i> Robots.txt Analysis</h3>
+            
+            ${found ? `
+                <div class="success-message">
+                    <i class="fas fa-check-circle"></i>
+                    <p><strong>Robots.txt found</strong></p>
+                </div>
+                
+                ${disallowed.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-ban"></i> Disallowed Paths (${disallowed.length})</h4>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Path</th>
+                                        <th>User Agent</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${disallowed.map(item => `
+                                        <tr>
+                                            <td><code>${item.path}</code></td>
+                                            <td>${item.user_agent}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${blockedPages.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h4><i class="fas fa-lock"></i> Blocked Pages (${blockedPages.length})</h4>
+                        <p>These pages are blocked by robots.txt and may not be indexed.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page URL</th>
+                                        <th>Blocked By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${blockedPages.slice(0, 100).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                            <td><code>${item.blocked_by}</code></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No pages are blocked by robots.txt</p></div>'}
+                
+                ${sitemapLinks.length > 0 ? `
+                    <div class="audit-info-section">
+                        <h4><i class="fas fa-sitemap"></i> Sitemap Links in Robots.txt</h4>
+                        <ul>
+                            ${sitemapLinks.map(link => `<li><a href="${link}" target="_blank">${link}</a></li>`).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+                
+                ${crawlDelay ? `
+                    <div class="audit-info-section">
+                        <h4><i class="fas fa-clock"></i> Crawl Delay</h4>
+                        <p>Crawl delay set to: <strong>${crawlDelay} seconds</strong></p>
+                    </div>
+                ` : ''}
+            ` : `
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p><strong>Robots.txt not found.</strong> Consider creating one to control search engine crawling.</p>
+                </div>
+            `}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Structured Data
+function displayStructuredData(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const totalPages = data.total_pages_with_structured_data || 0;
+    const totalCount = data.structured_data_count || 0;
+    const types = data.types_found || {};
+    const topTypes = data.top_types || [];
+    const errors = data.errors || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-code"></i> Structured Data Analysis</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${totalPages}</div>
+                    <div class="metric-label">Pages with Structured Data</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${totalCount}</div>
+                    <div class="metric-label">Total Structured Data Items</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${Object.keys(types).length}</div>
+                    <div class="metric-label">Unique Types Found</div>
+                </div>
+            </div>
+            
+            ${topTypes.length > 0 ? `
+                <div class="audit-info-section">
+                    <h4><i class="fas fa-list"></i> Top Structured Data Types</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${topTypes.map(([type, count]) => `
+                                    <tr>
+                                        <td><code>${type}</code></td>
+                                        <td>${count}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${errors.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Structured Data Errors (${errors.length})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Error</th>
+                                    <th>Format</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${errors.slice(0, 50).map(error => `
+                                    <tr>
+                                        <td><a href="${error.page}" target="_blank">${truncateUrl(error.page, 50)}</a></td>
+                                        <td>${error.error}</td>
+                                        <td><span class="badge">${error.format}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No structured data errors found!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Content Audit
+function displayContentAudit(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const thinContent = data.thin_content_pages || [];
+    const missingH1 = data.missing_h1 || [];
+    const multipleH1 = data.multiple_h1 || [];
+    const headerIssues = data.header_structure_issues || [];
+    const overOptimized = data.over_optimized || [];
+    const missingInternalLinks = data.missing_internal_links || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-file-alt"></i> Content Audit</h3>
+            
+            <div class="audit-summary-cards">
+                <div class="summary-card-small ${thinContent.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${data.thin_content_count || 0}</div>
+                    <div class="card-label">Thin Content Pages</div>
+                </div>
+                <div class="summary-card-small ${missingH1.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${missingH1.length}</div>
+                    <div class="card-label">Missing H1</div>
+                </div>
+                <div class="summary-card-small ${multipleH1.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${multipleH1.length}</div>
+                    <div class="card-label">Multiple H1</div>
+                </div>
+                <div class="summary-card-small ${overOptimized.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${overOptimized.length}</div>
+                    <div class="card-label">Over-Optimized</div>
+                </div>
+            </div>
+            
+            ${thinContent.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Thin Content Pages (${thinContent.length})</h4>
+                    <p>Pages with less than 300 words may be considered thin content.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Word Count</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${thinContent.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${item.word_count}</td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${missingH1.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing H1 (${missingH1.length})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${missingH1.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${multipleH1.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages with Multiple H1 Tags (${multipleH1.length})</h4>
+                    <p>Each page should have only one H1 tag.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>H1 Count</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${multipleH1.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${item.count}</td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${missingInternalLinks.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing Internal Links (${missingInternalLinks.length})</h4>
+                    <p>Pages with content but no outgoing internal links.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Word Count</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${missingInternalLinks.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${item.word_count}</td>
+                                        <td>${escapeHtml(item.title)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Mobile Friendliness
+function displayMobileFriendliness(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const missingViewport = data.missing_viewport_pages || [];
+    const missingTouchIcons = data.missing_touch_icons_pages || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-mobile-alt"></i> Mobile-Friendliness Analysis</h3>
+            
+            <div class="audit-summary-cards">
+                <div class="summary-card-small ${missingViewport.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${data.missing_viewport_count || 0}</div>
+                    <div class="card-label">Missing Viewport</div>
+                </div>
+                <div class="summary-card-small ${missingTouchIcons.length > 0 ? 'warning' : 'success'}">
+                    <div class="card-value">${data.missing_touch_icons_count || 0}</div>
+                    <div class="card-label">Missing Touch Icons</div>
+                </div>
+            </div>
+            
+            ${missingViewport.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing Viewport Tag (${missingViewport.length})</h4>
+                    <p>The viewport meta tag is essential for mobile responsiveness.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr><th>Page URL</th></tr>
+                            </thead>
+                            <tbody>
+                                ${missingViewport.slice(0, 100).map(url => `
+                                    <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages have viewport tags!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Security Checks
+function displaySecurityChecks(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const httpPages = data.http_pages || [];
+    const mixedContent = data.mixed_content || [];
+    const securityScore = data.security_score || 0;
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-shield-alt"></i> Security Analysis</h3>
+            
+            <div class="security-score-card">
+                <div class="score-circle">
+                    <div class="score-value">${securityScore}</div>
+                    <div class="score-label">Security Score</div>
+                </div>
+            </div>
+            
+            ${httpPages.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> HTTP Pages (${httpPages.length})</h4>
+                    <p>These pages are not using HTTPS. Consider migrating to HTTPS for better security.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${httpPages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${item.url}</a></td>
+                                        <td>${item.status}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages use HTTPS!</p></div>'}
+            
+            ${mixedContent.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Mixed Content (${mixedContent.length})</h4>
+                    <p>HTTPS pages loading HTTP resources can cause security warnings.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Resource</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${mixedContent.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td>${truncateUrl(item.resource, 60)}</td>
+                                        <td>${item.type}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Page Speed Flags
+function displayPageSpeedFlags(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const largeImages = data.large_images || [];
+    const tooManyRedirects = data.too_many_redirects || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-bolt"></i> Page Speed Flags</h3>
+            
+            ${largeImages.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Large/Unoptimized Images (${largeImages.length})</h4>
+                    <p>Images without width/height attributes can cause layout shifts.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Image</th>
+                                    <th>Issue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${largeImages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td>${truncateUrl(item.image, 60)}</td>
+                                        <td>${item.issue}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${tooManyRedirects.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Redirect Chains (${tooManyRedirects.length})</h4>
+                    <p>Multiple redirects can slow down page loading.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>From</th>
+                                    <th>To</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tooManyRedirects.slice(0, 50).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
+                                        <td><a href="${item.redirects_to}" target="_blank">${truncateUrl(item.redirects_to, 50)}</a></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Link Depth
+function displayLinkDepth(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const depths = data.depths || {};
+    const deepPages = data.deep_pages || [];
+    const avgDepth = data.avg_depth || 0;
+    const maxDepth = data.max_depth || 0;
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-project-diagram"></i> Internal Link Depth Analysis</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${avgDepth.toFixed(1)}</div>
+                    <div class="metric-label">Average Depth</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${maxDepth}</div>
+                    <div class="metric-label">Maximum Depth</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${deepPages.length}</div>
+                    <div class="metric-label">Deep Pages (>3 clicks)</div>
+                </div>
+            </div>
+            
+            ${deepPages.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Deep Pages (${deepPages.length})</h4>
+                    <p>Pages that require more than 3 clicks from the homepage may be harder to discover.</p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Depth (Clicks)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${deepPages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                        <td>${item.depth}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No deep pages detected!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display HTTP Status Coverage
+function displayHttpStatus(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const statusBreakdown = data.status_breakdown || {};
+    const redirectChains = data.redirect_chains || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-server"></i> HTTP Status Code Coverage</h3>
+            
+            <div class="status-breakdown-grid">
+                ${Object.entries(statusBreakdown).map(([status, count]) => {
+                    const statusClass = status === '200' ? 'success' : ['301', '302'].includes(status) ? 'info' : ['404', '500'].includes(status) ? 'danger' : 'warning';
+                    return `
+                        <div class="status-card ${statusClass}">
+                            <div class="status-code">${status}</div>
+                            <div class="status-count">${count}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            
+            ${redirectChains.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exchange-alt"></i> Redirect Chains (${redirectChains.length})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>From</th>
+                                    <th>To</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${redirectChains.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.from}" target="_blank">${truncateUrl(item.from, 50)}</a></td>
+                                        <td><a href="${item.to}" target="_blank">${truncateUrl(item.to, 50)}</a></td>
+                                        <td>${item.status}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display JavaScript Links
+function displayJavaScriptLinks(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const jsLinks = data.js_links_details || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fab fa-js"></i> JavaScript Links Detection</h3>
+            
+            <div class="info-message">
+                <i class="fas fa-info-circle"></i>
+                <p>Pages using JavaScript-rendered navigation may not be fully crawlable by search engines.</p>
+            </div>
+            
+            ${jsLinks.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Pages with JavaScript Links (${data.pages_with_js_links || 0})</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Onclick Links</th>
+                                    <th>JavaScript Protocol</th>
+                                    <th>Total JS Links</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${jsLinks.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 60)}</a></td>
+                                        <td>${item.onclick_count}</td>
+                                        <td>${item.javascript_protocol_count}</td>
+                                        <td>${item.total_js_links}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No JavaScript-rendered links detected!</p></div>'}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Pagination
+function displayPagination(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const paginationPages = data.pagination_pages || 0;
+    const paginationDetails = data.pagination_details || [];
+    const parameterVariations = data.parameter_variations || {};
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-list"></i> Pagination & Parameter Handling</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${paginationPages}</div>
+                    <div class="metric-label">Pages with Pagination</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${Object.keys(parameterVariations).length}</div>
+                    <div class="metric-label">Parameter Types</div>
+                </div>
+            </div>
+            
+            ${paginationDetails.length > 0 ? `
+                <div class="audit-issue-section">
+                    <h4><i class="fas fa-list"></i> Pagination Parameters Detected</h4>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page URL</th>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${paginationDetails.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td><code>${item.parameter}</code></td>
+                                        <td>${item.value}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${Object.keys(parameterVariations).length > 0 ? `
+                <div class="audit-info-section">
+                    <h4><i class="fas fa-cog"></i> Parameter Variations</h4>
+                    <p>Consider using rel="next" and rel="prev" for pagination, or canonical tags to avoid duplicate content.</p>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Indexability Scores
+function displayIndexability(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const scores = data.scores || [];
+    const avgScore = data.avg_score || 0;
+    const indexableCount = data.indexable_count || 0;
+    const nonIndexableCount = data.non_indexable_count || 0;
+    
+    // Sort by score
+    const sortedScores = [...scores].sort((a, b) => a.score - b.score);
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-search"></i> Indexability Score Analysis</h3>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">${avgScore.toFixed(1)}%</div>
+                    <div class="metric-label">Average Score</div>
+                    <div class="metric-status ${avgScore >= 70 ? 'good' : avgScore >= 50 ? 'average' : 'poor'}">
+                        ${avgScore >= 70 ? '✓ Good' : avgScore >= 50 ? '⚡ Medium' : '⚠ Poor'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${indexableCount}</div>
+                    <div class="metric-label">Indexable Pages</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${nonIndexableCount}</div>
+                    <div class="metric-label">Non-Indexable Pages</div>
+                </div>
+            </div>
+            
+            <div class="audit-issue-section">
+                <h4><i class="fas fa-list"></i> All Pages Indexability Scores</h4>
+                <div class="table-container">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Page URL</th>
+                                <th>Score</th>
+                                <th>Indexable</th>
+                                <th>Issues</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sortedScores.slice(0, 200).map(item => `
+                                <tr>
+                                    <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                    <td>
+                                        <span class="score-badge ${item.score >= 70 ? 'good' : item.score >= 50 ? 'average' : 'poor'}">
+                                            ${item.score}%
+                                        </span>
+                                    </td>
+                                    <td>${item.indexable ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-danger">No</span>'}</td>
+                                    <td>${item.issues.length > 0 ? item.issues.join(', ') : 'None'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Display Top Content
+function displayTopContent(data) {
+    const container = document.getElementById('auditContent');
+    if (!container) return;
+    
+    const topContent = data || [];
+    
+    let html = `
+        <div class="audit-section">
+            <h3><i class="fas fa-star"></i> Top Content by Traffic Signals</h3>
+            
+            <p class="section-description">Pages ranked by potential traffic signals: word count, internal links, and URL depth.</p>
+            
+            <div class="table-container">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Page URL</th>
+                            <th>Title</th>
+                            <th>Score</th>
+                            <th>Word Count</th>
+                            <th>Internal Links</th>
+                            <th>Depth</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${topContent.map((item, index) => `
+                            <tr>
+                                <td><strong>#${index + 1}</strong></td>
+                                <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
+                                <td>${escapeHtml(item.title)}</td>
+                                <td><span class="score-badge good">${item.score.toFixed(1)}</span></td>
+                                <td>${item.word_count}</td>
+                                <td>${item.internal_links}</td>
+                                <td>${item.depth}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
 }
 
 // Display Advanced SEO Audit section

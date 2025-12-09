@@ -5135,3 +5135,430 @@ body {
         padding: 8px;
     }
 }
+
+/* ============================================
+   PROFESSIONAL SEO AUDIT STYLES
+   ============================================ */
+
+.audit-overview {
+    margin-bottom: 30px;
+}
+
+.audit-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.audit-overview-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.overview-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.overview-content {
+    flex: 1;
+}
+
+.overview-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--dark-color);
+    margin-bottom: 5px;
+}
+
+.overview-label {
+    font-size: var(--font-sm);
+    color: var(--text-muted);
+}
+
+.audit-sections-tabs {
+    margin-bottom: 25px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.audit-tabs-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-bottom: 10px;
+}
+
+.audit-tab-btn {
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.audit-tab-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--primary-color);
+}
+
+.audit-tab-btn.active {
+    background: var(--bg-primary);
+    border-color: var(--primary-color);
+    border-bottom-color: var(--bg-primary);
+    color: var(--primary-color);
+    position: relative;
+    bottom: -2px;
+}
+
+.audit-content {
+    min-height: 400px;
+}
+
+.audit-section {
+    padding: 20px 0;
+}
+
+.audit-section h3 {
+    margin-top: 0;
+    margin-bottom: 25px;
+    font-size: var(--font-xl);
+    color: var(--dark-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.metric-card {
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.metric-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.metric-label {
+    font-size: var(--font-sm);
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.metric-status {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    display: inline-block;
+}
+
+.metric-status.good {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.metric-status.average {
+    background: #fff9c4;
+    color: #f57f17;
+}
+
+.metric-status.poor {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.audit-issue-section,
+.audit-info-section {
+    margin-top: 30px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.audit-issue-section h4,
+.audit-info-section h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--dark-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.audit-table th {
+    background: var(--bg-primary);
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--dark-color);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.audit-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.audit-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.audit-table code {
+    background: var(--bg-primary);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-xs);
+    color: var(--primary-color);
+}
+
+.status-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.status-card {
+    padding: 20px;
+    border-radius: var(--radius-md);
+    text-align: center;
+    border: 2px solid;
+}
+
+.status-card.success {
+    background: #e8f5e9;
+    border-color: #4caf50;
+    color: #2e7d32;
+}
+
+.status-card.info {
+    background: #e3f2fd;
+    border-color: #2196f3;
+    color: #1565c0;
+}
+
+.status-card.warning {
+    background: #fff9c4;
+    border-color: #ffc107;
+    color: #f57f17;
+}
+
+.status-card.danger {
+    background: #ffebee;
+    border-color: #f44336;
+    color: #c62828;
+}
+
+.status-code {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.status-count {
+    font-size: var(--font-lg);
+    font-weight: 600;
+}
+
+.security-score-card {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.score-circle {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    color: white;
+    box-shadow: var(--shadow-lg);
+}
+
+.score-value {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.score-label {
+    font-size: var(--font-sm);
+    opacity: 0.9;
+}
+
+.score-badge {
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: var(--font-sm);
+}
+
+.score-badge.good {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.score-badge.average {
+    background: #fff9c4;
+    color: #f57f17;
+}
+
+.score-badge.poor {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.audit-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.summary-card-small {
+    padding: 15px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.summary-card-small.success {
+    background: #e8f5e9;
+    border-color: #4caf50;
+}
+
+.summary-card-small.warning {
+    background: #fff9c4;
+    border-color: #ffc107;
+}
+
+.summary-card-small.danger {
+    background: #ffebee;
+    border-color: #f44336;
+}
+
+.card-value {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.card-label {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+}
+
+.info-message,
+.warning-message {
+    padding: 20px;
+    border-radius: var(--radius-md);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+}
+
+.info-message {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    color: #1565c0;
+}
+
+.warning-message {
+    background: #fff9c4;
+    border-left: 4px solid #ffc107;
+    color: #856404;
+}
+
+.info-message i,
+.warning-message i {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.info-message p,
+.warning-message p {
+    margin: 0;
+    line-height: 1.6;
+}
+
+/* Responsive for professional audit */
+@media (max-width: 768px) {
+    .audit-overview-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .audit-tabs-container {
+        flex-direction: column;
+    }
+    
+    .audit-tab-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .status-breakdown-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .audit-summary-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .audit-table {
+        font-size: var(--font-sm);
+    }
+    
+    .audit-table th,
+    .audit-table td {
+        padding: 8px;
+    }
+}

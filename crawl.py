@@ -49,6 +49,14 @@ try:
 except ImportError:
     ADVANCED_ANALYZERS_AVAILABLE = False
 
+# Import professional SEO auditor
+try:
+    from professional_seo_audit import ProfessionalSEOAuditor
+    PROFESSIONAL_AUDIT_AVAILABLE = True
+except ImportError:
+    PROFESSIONAL_AUDIT_AVAILABLE = False
+    ProfessionalSEOAuditor = None
+
 # Import page power analyzer
 try:
     from page_power_analyzer import PagePowerAnalyzer
@@ -247,6 +255,25 @@ class ReportGenerator:
         # Detect orphan pages (pages with no internal links pointing to them)
         orphan_pages = self._detect_orphan_pages(items)
         report_data['orphan_pages'] = orphan_pages
+        
+        # Run Professional SEO Audit (comprehensive analysis)
+        professional_audit = {}
+        if PROFESSIONAL_AUDIT_AVAILABLE and ProfessionalSEOAuditor and items:
+            try:
+                # Get start URL from first item
+                start_url = items[0].get('url', '') if items else ''
+                if start_url:
+                    parsed = urlparse(start_url)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}"
+                    
+                    auditor = ProfessionalSEOAuditor(base_url)
+                    professional_audit = auditor.analyze_all(items)
+                    report_data['professional_audit'] = professional_audit
+            except Exception as e:
+                print(f"Warning: Professional SEO Audit failed: {e}")
+                import traceback
+                traceback.print_exc()
+                professional_audit = {}
         
         # Calculate Page Power (prominence based on internal linking)
         page_powers = {}
