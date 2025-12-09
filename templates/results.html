@@ -114,6 +114,9 @@
 
             <!-- Tabs Navigation -->
             <div class="tabs">
+                <button class="tab-btn" onclick="showSection('summary-report')">
+                    <i class="fas fa-file-alt"></i> Summary Report
+                </button>
                 <button class="tab-btn active" onclick="showSection('overview')">
                     <i class="fas fa-list"></i> Overview
                 </button>
@@ -160,6 +163,59 @@
                     <i class="fas fa-sitemap"></i> DOM Analysis
                 </button>
             </div>
+
+            <!-- Summary Report Section -->
+            <section id="summary-report-section" class="content-section">
+                <div class="card">
+                    <div class="section-header">
+                        <h2><i class="fas fa-file-alt"></i> Your Report is Ready</h2>
+                        <p class="section-description" id="summaryReportTimestamp"></p>
+                    </div>
+                    
+                    <!-- Top Issues -->
+                    <div class="summary-section">
+                        <h3 class="summary-section-title"><i class="fas fa-exclamation-triangle"></i> Your Top Issues</h3>
+                        <div id="topIssuesContainer" class="top-issues-grid">
+                            <p class="loading">Calculating issues...</p>
+                        </div>
+                    </div>
+
+                    <!-- Page Breakdown -->
+                    <div class="summary-section">
+                        <h3 class="summary-section-title"><i class="fas fa-file"></i> Your Pages</h3>
+                        <p class="summary-section-subtitle">Click below to see detailed results for your pages:</p>
+                        <div id="pageBreakdownContainer" class="page-breakdown-grid">
+                            <p class="loading">Analyzing pages...</p>
+                        </div>
+                    </div>
+
+                    <!-- Duplicate Content Breakdown -->
+                    <div class="summary-section">
+                        <h3 class="summary-section-title"><i class="fas fa-copy"></i> Your Duplicate Content</h3>
+                        <p class="summary-section-subtitle">Click here to see your duplicate content:</p>
+                        <div id="duplicateContentBreakdownContainer" class="duplicate-content-breakdown">
+                            <p class="loading">Calculating duplicate content...</p>
+                        </div>
+                    </div>
+
+                    <!-- Comparison with Other Sites -->
+                    <div class="summary-section">
+                        <h3 class="summary-section-title"><i class="fas fa-chart-line"></i> Comparison with Other Sites</h3>
+                        <p class="summary-section-subtitle">See how your site compares with other sites scanned:</p>
+                        <div id="siteComparisonContainer" class="site-comparison-grid">
+                            <p class="loading">Calculating comparisons...</p>
+                        </div>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div class="summary-section">
+                        <h3 class="summary-section-title"><i class="fas fa-lightbulb"></i> How to Fix These Issues</h3>
+                        <div id="recommendationsContainer" class="recommendations-container">
+                            <p class="loading">Generating recommendations...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Overview Section -->
             <section id="overview-section" class="content-section active">
@@ -454,22 +510,92 @@
                 <div class="card">
                     <div class="section-header">
                         <h2><i class="fas fa-image"></i> Image Analyzer</h2>
+                        <div class="section-actions">
+                            <input type="text" id="imageSearchInput" placeholder="Search images..." class="search-box">
+                            <select id="imagePageFilter" class="filter-select">
+                                <option value="all">All Pages</option>
+                            </select>
+                            <select id="imageIssueFilter" class="filter-select">
+                                <option value="all">All Images</option>
+                                <option value="missing-alt">Missing ALT</option>
+                                <option value="large">Large Images</option>
+                                <option value="low-quality">Low Quality</option>
+                                <option value="duplicate">Duplicate</option>
+                                <option value="no-dimensions">No Dimensions</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="image-analyzer-grid">
+                    
+                    <!-- Image Summary Statistics -->
+                    <div class="image-summary-stats" id="imageSummaryStats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalImagesCount">0</div>
+                            <div class="stat-label">Total Images</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="missingAltCount">0</div>
+                            <div class="stat-label">Missing ALT</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="largeImagesCount">0</div>
+                            <div class="stat-label">Large Images</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="lowQualityCount">0</div>
+                            <div class="stat-label">Low Quality</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="duplicateImagesCount">0</div>
+                            <div class="stat-label">Duplicates</div>
+                        </div>
+                    </div>
+
+                    <!-- All Images Table -->
+                    <div class="table-container" style="margin-top: 20px;">
+                        <table id="allImagesTable">
+                            <thead>
+                                <tr>
+                                    <th>Preview</th>
+                                    <th>Image URL</th>
+                                    <th>Page</th>
+                                    <th>Dimensions</th>
+                                    <th>Size</th>
+                                    <th>Format</th>
+                                    <th>ALT Text</th>
+                                    <th>Issues</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="allImagesTableBody">
+                                <tr>
+                                    <td colspan="9" class="loading">Loading image analysis...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Detailed Sections -->
+                    <div class="image-analyzer-grid" style="margin-top: 30px;">
                         <div class="image-analyzer-column">
-                            <h3>Missing ALT Text</h3>
+                            <h3><i class="fas fa-exclamation-circle"></i> Missing ALT Text</h3>
                             <div id="missingAltContainer">
                                 <p class="loading">Analyzing images for missing ALT text...</p>
                             </div>
                         </div>
                         <div class="image-analyzer-column">
-                            <h3>Large Images (Possible Unoptimized)</h3>
+                            <h3><i class="fas fa-weight"></i> Large Images (Possible Unoptimized)</h3>
                             <div id="largeImagesContainer">
                                 <p class="loading">Checking image sizes...</p>
                             </div>
                         </div>
                         <div class="image-analyzer-column">
-                            <h3>Duplicate Images Across Pages</h3>
+                            <h3><i class="fas fa-star-half-alt"></i> Low Quality Images</h3>
+                            <div id="lowQualityImagesContainer">
+                                <p class="loading">Detecting low quality images...</p>
+                            </div>
+                        </div>
+                        <div class="image-analyzer-column">
+                            <h3><i class="fas fa-copy"></i> Duplicate Images Across Pages</h3>
                             <div id="duplicateImagesContainer">
                                 <p class="loading">Finding duplicate image usage...</p>
                             </div>

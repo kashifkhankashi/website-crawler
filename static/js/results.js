@@ -84,6 +84,12 @@ async function loadResults() {
 // Display all sections
 function displayAllSections(data) {
     try {
+        displaySummaryReport(data);
+    } catch (e) {
+        console.error('Error displaying summary report:', e);
+    }
+    
+    try {
         displayOverview(data);
     } catch (e) {
         console.error('Error displaying overview:', e);
@@ -279,85 +285,559 @@ function displayMetaSeo(data) {
 
 // Image analyzer section
 function displayImageAnalyzer(data) {
-    const missingAltContainer = document.getElementById('missingAltContainer');
-    const largeImagesContainer = document.getElementById('largeImagesContainer');
-    const duplicateImagesContainer = document.getElementById('duplicateImagesContainer');
-
-    if (!missingAltContainer || !largeImagesContainer || !duplicateImagesContainer) return;
-
-    const analysis = data.image_analysis || {};
-
-    // Missing ALT text
-    const missingAlt = analysis.missing_alt || [];
-    if (missingAlt.length === 0) {
-        missingAltContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No images with missing ALT text were found.</p></div>';
-    } else {
-        let html = '<ul class="image-list">';
-        missingAlt.slice(0, 200).forEach(item => {
-            html += `
-                <li>
-                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a></div>
-                    <div><strong>Page:</strong> <a href="${item.page_url}" target="_blank">${item.page_title || item.page_url}</a></div>
-                </li>
-            `;
-        });
-        if (missingAlt.length > 200) {
-            html += `<li><em>... and ${missingAlt.length - 200} more</em></li>`;
+    if (!data || !data.pages) return;
+    
+    // Collect all images from all pages with full details
+    const allImages = [];
+    const imageMap = new Map(); // src -> image data
+    const imageUsage = new Map(); // src -> array of pages using it
+    
+    data.pages.forEach(page => {
+        if (page.images && Array.isArray(page.images)) {
+            page.images.forEach(img => {
+                const src = img.src || img.url || '';
+                if (!src) return;
+                
+                // Get image format from URL
+                const format = getImageFormat(src);
+                
+                // Check for issues
+                const alt = (img.alt || '').trim();
+                const hasAlt = alt.length > 0;
+                const width = img.width || null;
+                const height = img.height || null;
+                const hasDimensions = width && height;
+                
+                // Detect low quality (small dimensions)
+                const isLowQuality = hasDimensions && (width < 200 || height < 200);
+                
+                // Get size from performance analysis if available
+                let sizeBytes = 0;
+                let sizeKb = 0;
+                if (page.performance_analysis && page.performance_analysis.heavy_images) {
+                    const heavyImg = page.performance_analysis.heavy_images.find(hi => hi.url === src);
+                    if (heavyImg) {
+                        sizeBytes = heavyImg.size_bytes || 0;
+                        sizeKb = heavyImg.size_kb || 0;
+                    }
+                }
+                
+                // Check if large (over 300KB)
+                const isLarge = sizeBytes > 300 * 1024 || sizeKb > 300;
+                
+                // Track image usage
+                if (!imageUsage.has(src)) {
+                    imageUsage.set(src, []);
+                }
+                imageUsage.get(src).push({
+                    url: page.url,
+                    title: page.title || page.url
+                });
+                
+                // Create image entry
+                const imageEntry = {
+                    src: src,
+                    alt: alt,
+                    hasAlt: hasAlt,
+                    width: width,
+                    height: height,
+                    hasDimensions: hasDimensions,
+                    isLowQuality: isLowQuality,
+                    format: format,
+                    sizeBytes: sizeBytes,
+                    sizeKb: sizeKb,
+                    isLarge: isLarge,
+                    pageUrl: page.url,
+                    pageTitle: page.title || page.url,
+                    issues: []
+                };
+                
+                // Collect issues
+                if (!hasAlt) imageEntry.issues.push('missing-alt');
+                if (isLarge) imageEntry.issues.push('large');
+                if (isLowQuality) imageEntry.issues.push('low-quality');
+                if (!hasDimensions) imageEntry.issues.push('no-dimensions');
+                
+                allImages.push(imageEntry);
+                
+                // Store in map for duplicate detection
+                if (!imageMap.has(src)) {
+                    imageMap.set(src, imageEntry);
+                }
+            });
         }
-        html += '</ul>';
-        missingAltContainer.innerHTML = html;
-    }
+    });
+    
+    // Mark duplicates
+    imageUsage.forEach((pages, src) => {
+        if (pages.length > 1 && imageMap.has(src)) {
+            imageMap.get(src).isDuplicate = true;
+            imageMap.get(src).usageCount = pages.length;
+            imageMap.get(src).issues.push('duplicate');
+        }
+    });
+    
+    // Update all images to mark duplicates
+    allImages.forEach(img => {
+        if (imageUsage.get(img.src) && imageUsage.get(img.src).length > 1) {
+            img.isDuplicate = true;
+            img.usageCount = imageUsage.get(img.src).length;
+            if (!img.issues.includes('duplicate')) {
+                img.issues.push('duplicate');
+            }
+        }
+    });
+    
+    // Calculate statistics
+    const stats = {
+        total: allImages.length,
+        missingAlt: allImages.filter(img => !img.hasAlt).length,
+        large: allImages.filter(img => img.isLarge).length,
+        lowQuality: allImages.filter(img => img.isLowQuality).length,
+        duplicate: allImages.filter(img => img.isDuplicate).length,
+        noDimensions: allImages.filter(img => !img.hasDimensions).length
+    };
+    
+    // Update summary stats
+    updateImageSummaryStats(stats);
+    
+    // Display all images table
+    displayAllImagesTable(allImages, data);
+    
+    // Display detailed sections
+    displayMissingAltImages(allImages);
+    displayLargeImages(allImages);
+    displayLowQualityImages(allImages);
+    displayDuplicateImages(allImages, imageUsage);
+    
+    // Setup filters
+    setupImageFilters(allImages, data);
+}
 
-    // Large images
-    const largeImages = analysis.large_images || [];
-    if (largeImages.length === 0) {
-        largeImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large images detected (based on Content-Length).</p></div>';
-    } else {
-        let html = '<ul class="image-list">';
-        largeImages.forEach(item => {
-            const sizeKb = (item.size_bytes / 1024).toFixed(1);
-            html += `
-                <li>
-                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a> (${sizeKb} KB)</div>
-                    <div><strong>Used on:</strong>
-                        <ul>
-                            ${item.pages.slice(0, 5).map(p => `
-                                <li><a href="${p.page_url}" target="_blank">${p.page_title || p.page_url}</a></li>
-                            `).join('')}
-                            ${item.pages.length > 5 ? `<li><em>... and ${item.pages.length - 5} more pages</em></li>` : ''}
-                        </ul>
-                    </div>
-                </li>
-            `;
-        });
-        html += '</ul>';
-        largeImagesContainer.innerHTML = html;
-    }
+// Helper function to detect image format
+function getImageFormat(url) {
+    if (!url) return 'unknown';
+    const lower = url.toLowerCase();
+    if (lower.includes('.webp') || lower.includes('webp')) return 'WebP';
+    if (lower.includes('.jpg') || lower.includes('.jpeg') || lower.includes('jpeg')) return 'JPEG';
+    if (lower.includes('.png')) return 'PNG';
+    if (lower.includes('.gif')) return 'GIF';
+    if (lower.includes('.svg')) return 'SVG';
+    if (lower.includes('.avif')) return 'AVIF';
+    return 'unknown';
+}
 
-    // Duplicate images
-    const duplicateImages = analysis.duplicate_images || [];
-    if (duplicateImages.length === 0) {
-        duplicateImagesContainer.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate image usage detected across pages.</p></div>';
-    } else {
-        let html = '<ul class="image-list">';
-        duplicateImages.forEach(item => {
-            html += `
-                <li>
-                    <div><strong>Image:</strong> <a href="${item.image_url}" target="_blank">${item.image_url}</a></div>
-                    <div><strong>Used on ${item.pages.length} pages:</strong>
-                        <ul>
-                            ${item.pages.slice(0, 8).map(p => `
-                                <li><a href="${p.page_url}" target="_blank">${p.page_title || p.page_url}</a></li>
-                            `).join('')}
-                            ${item.pages.length > 8 ? `<li><em>... and ${item.pages.length - 8} more pages</em></li>` : ''}
-                        </ul>
-                    </div>
-                </li>
-            `;
-        });
-        html += '</ul>';
-        duplicateImagesContainer.innerHTML = html;
+// Update summary statistics
+function updateImageSummaryStats(stats) {
+    const elements = {
+        totalImagesCount: document.getElementById('totalImagesCount'),
+        missingAltCount: document.getElementById('missingAltCount'),
+        largeImagesCount: document.getElementById('largeImagesCount'),
+        lowQualityCount: document.getElementById('lowQualityCount'),
+        duplicateImagesCount: document.getElementById('duplicateImagesCount')
+    };
+    
+    if (elements.totalImagesCount) elements.totalImagesCount.textContent = stats.total;
+    if (elements.missingAltCount) elements.missingAltCount.textContent = stats.missingAlt;
+    if (elements.largeImagesCount) elements.largeImagesCount.textContent = stats.large;
+    if (elements.lowQualityCount) elements.lowQualityCount.textContent = stats.lowQuality;
+    if (elements.duplicateImagesCount) elements.duplicateImagesCount.textContent = stats.duplicate;
+}
+
+// Display all images in a comprehensive table
+function displayAllImagesTable(allImages, data) {
+    const tbody = document.getElementById('allImagesTableBody');
+    if (!tbody) return;
+    
+    if (allImages.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No images found on any pages.</td></tr>';
+        return;
     }
+    
+    // Remove duplicates (show each unique image once)
+    const uniqueImages = [];
+    const seen = new Set();
+    
+    allImages.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueImages.push(img);
+        }
+    });
+    
+    let html = '';
+    uniqueImages.forEach(img => {
+        const dimensions = img.hasDimensions ? `${img.width} × ${img.height}` : 'N/A';
+        const size = img.sizeKb > 0 ? `${img.sizeKb.toFixed(1)} KB` : 'Unknown';
+        const altText = img.alt || '<em class="text-muted">No ALT text</em>';
+        const issues = img.issues.map(issue => {
+            const labels = {
+                'missing-alt': '<span class="badge badge-warning">Missing ALT</span>',
+                'large': '<span class="badge badge-danger">Large</span>',
+                'low-quality': '<span class="badge badge-info">Low Quality</span>',
+                'duplicate': `<span class="badge badge-secondary">Duplicate (${img.usageCount || 1})</span>`,
+                'no-dimensions': '<span class="badge badge-warning">No Dimensions</span>'
+            };
+            return labels[issue] || '';
+        }).join(' ');
+        
+        html += `
+            <tr data-src="${img.src}" data-issues="${img.issues.join(',')}" data-page="${img.pageUrl}">
+                <td>
+                    <img src="${img.src}" alt="${img.alt || ''}" 
+                         style="max-width: 80px; max-height: 80px; object-fit: contain; border: 1px solid #ddd; border-radius: 4px;"
+                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'80\' height=\'80\'%3E%3Crect width=\'80\' height=\'80\' fill=\'%23f0f0f0\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%23999\' font-size=\'12\'%3EImage%3C/text%3E%3C/svg%3E';">
+                </td>
+                <td>
+                    <a href="${img.src}" target="_blank" title="${img.src}">
+                        ${truncateUrl(img.src, 50)}
+                    </a>
+                </td>
+                <td>
+                    <a href="${img.pageUrl}" target="_blank" title="${img.pageTitle}">
+                        ${truncateText(img.pageTitle, 40)}
+                    </a>
+                </td>
+                <td>${dimensions}</td>
+                <td>${size}</td>
+                <td><span class="badge">${img.format}</span></td>
+                <td>${altText}</td>
+                <td>${issues || '<span class="text-success">✓ OK</span>'}</td>
+                <td>
+                    <button class="action-btn action-btn-view" onclick="showImageDetails('${img.src}', '${img.pageUrl}')" title="View Details">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// Display missing ALT images
+function displayMissingAltImages(allImages) {
+    const container = document.getElementById('missingAltContainer');
+    if (!container) return;
+    
+    const missingAlt = allImages.filter(img => !img.hasAlt);
+    const uniqueMissing = [];
+    const seen = new Set();
+    
+    missingAlt.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueMissing.push(img);
+        }
+    });
+    
+    if (uniqueMissing.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>All images have ALT text!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="image-issues-list">';
+    uniqueMissing.slice(0, 50).forEach(img => {
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${img.src}" alt="" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${img.src}" target="_blank">${truncateUrl(img.src, 60)}</a></div>
+                    <div class="image-page"><strong>Page:</strong> <a href="${img.pageUrl}" target="_blank">${truncateText(img.pageTitle, 50)}</a></div>
+                    ${img.hasDimensions ? `<div class="image-dimensions">Dimensions: ${img.width} × ${img.height}</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    if (uniqueMissing.length > 50) {
+        html += `<div class="more-items">... and ${uniqueMissing.length - 50} more images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display large images
+function displayLargeImages(allImages) {
+    const container = document.getElementById('largeImagesContainer');
+    if (!container) return;
+    
+    const large = allImages.filter(img => img.isLarge);
+    const uniqueLarge = [];
+    const seen = new Set();
+    
+    large.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueLarge.push(img);
+        }
+    });
+    
+    if (uniqueLarge.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large images detected!</p></div>';
+        return;
+    }
+    
+    // Sort by size descending
+    uniqueLarge.sort((a, b) => (b.sizeKb || 0) - (a.sizeKb || 0));
+    
+    let html = '<div class="image-issues-list">';
+    uniqueLarge.slice(0, 50).forEach(img => {
+        const size = img.sizeKb > 0 ? `${img.sizeKb.toFixed(1)} KB` : 'Unknown size';
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${img.src}" alt="${img.alt || ''}" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${img.src}" target="_blank">${truncateUrl(img.src, 60)}</a></div>
+                    <div class="image-size"><strong>Size:</strong> ${size}</div>
+                    <div class="image-page"><strong>Page:</strong> <a href="${img.pageUrl}" target="_blank">${truncateText(img.pageTitle, 50)}</a></div>
+                    ${img.hasDimensions ? `<div class="image-dimensions">Dimensions: ${img.width} × ${img.height}</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    if (uniqueLarge.length > 50) {
+        html += `<div class="more-items">... and ${uniqueLarge.length - 50} more images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display low quality images
+function displayLowQualityImages(allImages) {
+    const container = document.getElementById('lowQualityImagesContainer');
+    if (!container) return;
+    
+    const lowQuality = allImages.filter(img => img.isLowQuality);
+    const uniqueLowQuality = [];
+    const seen = new Set();
+    
+    lowQuality.forEach(img => {
+        if (!seen.has(img.src)) {
+            seen.add(img.src);
+            uniqueLowQuality.push(img);
+        }
+    });
+    
+    if (uniqueLowQuality.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No low quality images detected!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="image-issues-list">';
+    uniqueLowQuality.slice(0, 50).forEach(img => {
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${img.src}" alt="${img.alt || ''}" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${img.src}" target="_blank">${truncateUrl(img.src, 60)}</a></div>
+                    <div class="image-dimensions"><strong>Dimensions:</strong> ${img.width} × ${img.height} (Low resolution)</div>
+                    <div class="image-page"><strong>Page:</strong> <a href="${img.pageUrl}" target="_blank">${truncateText(img.pageTitle, 50)}</a></div>
+                    <div class="image-recommendation"><i class="fas fa-info-circle"></i> Consider using higher resolution images for better quality</div>
+                </div>
+            </div>
+        `;
+    });
+    if (uniqueLowQuality.length > 50) {
+        html += `<div class="more-items">... and ${uniqueLowQuality.length - 50} more images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display duplicate images
+function displayDuplicateImages(allImages, imageUsage) {
+    const container = document.getElementById('duplicateImagesContainer');
+    if (!container) return;
+    
+    const duplicates = [];
+    imageUsage.forEach((pages, src) => {
+        if (pages.length > 1) {
+            const img = allImages.find(i => i.src === src);
+            if (img) {
+                duplicates.push({
+                    src: src,
+                    usageCount: pages.length,
+                    pages: pages,
+                    img: img
+                });
+            }
+        }
+    });
+    
+    if (duplicates.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No duplicate images detected!</p></div>';
+        return;
+    }
+    
+    // Sort by usage count descending
+    duplicates.sort((a, b) => b.usageCount - a.usageCount);
+    
+    let html = '<div class="image-issues-list">';
+    duplicates.slice(0, 30).forEach(dup => {
+        html += `
+            <div class="image-issue-item">
+                <div class="image-preview-small">
+                    <img src="${dup.src}" alt="${dup.img.alt || ''}" onerror="this.style.display='none';">
+                </div>
+                <div class="image-issue-details">
+                    <div class="image-url"><a href="${dup.src}" target="_blank">${truncateUrl(dup.src, 60)}</a></div>
+                    <div class="image-usage-count"><strong>Used on ${dup.usageCount} pages:</strong></div>
+                    <div class="image-pages-list">
+                        ${dup.pages.slice(0, 5).map(p => `
+                            <div class="page-link-item">
+                                <a href="${p.url}" target="_blank">${truncateText(p.title, 40)}</a>
+                            </div>
+                        `).join('')}
+                        ${dup.pages.length > 5 ? `<div class="more-pages">... and ${dup.pages.length - 5} more pages</div>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    if (duplicates.length > 30) {
+        html += `<div class="more-items">... and ${duplicates.length - 30} more duplicate images</div>`;
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Setup image filters
+function setupImageFilters(allImages, data) {
+    const searchInput = document.getElementById('imageSearchInput');
+    const pageFilter = document.getElementById('imagePageFilter');
+    const issueFilter = document.getElementById('imageIssueFilter');
+    const tbody = document.getElementById('allImagesTableBody');
+    
+    if (!searchInput || !pageFilter || !issueFilter || !tbody) return;
+    
+    // Populate page filter
+    if (data.pages) {
+        data.pages.forEach(page => {
+            const option = document.createElement('option');
+            option.value = page.url;
+            option.textContent = page.title || page.url;
+            pageFilter.appendChild(option);
+        });
+    }
+    
+    const applyFilters = () => {
+        const searchTerm = (searchInput.value || '').toLowerCase();
+        const selectedPage = pageFilter.value;
+        const selectedIssue = issueFilter.value;
+        
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            let show = true;
+            
+            // Search filter
+            if (searchTerm) {
+                const src = (row.dataset.src || '').toLowerCase();
+                const page = (row.dataset.page || '').toLowerCase();
+                if (!src.includes(searchTerm) && !page.includes(searchTerm)) {
+                    show = false;
+                }
+            }
+            
+            // Page filter
+            if (selectedPage !== 'all' && row.dataset.page !== selectedPage) {
+                show = false;
+            }
+            
+            // Issue filter
+            if (selectedIssue !== 'all') {
+                const issues = (row.dataset.issues || '').split(',');
+                if (!issues.includes(selectedIssue)) {
+                    show = false;
+                }
+            }
+            
+            row.style.display = show ? '' : 'none';
+        });
+    };
+    
+    searchInput.addEventListener('input', applyFilters);
+    pageFilter.addEventListener('change', applyFilters);
+    issueFilter.addEventListener('change', applyFilters);
+}
+
+// Show image details in modal
+function showImageDetails(imageSrc, pageUrl) {
+    // Find the page data
+    if (!reportData || !reportData.pages) return;
+    
+    const page = reportData.pages.find(p => p.url === pageUrl);
+    if (!page) return;
+    
+    const image = (page.images || []).find(img => (img.src || img.url) === imageSrc);
+    if (!image) return;
+    
+    const modal = document.getElementById('pageModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalTitle || !modalBody) return;
+    
+    const format = getImageFormat(imageSrc);
+    const dimensions = (image.width && image.height) ? `${image.width} × ${image.height}` : 'Not specified';
+    const alt = image.alt || 'No ALT text';
+    
+    modalTitle.textContent = 'Image Details';
+    modalBody.innerHTML = `
+        <div class="image-details-modal">
+            <div class="image-preview-large">
+                <img src="${imageSrc}" alt="${alt}" style="max-width: 100%; max-height: 400px; border-radius: 8px;">
+            </div>
+            <div class="image-details-info">
+                <h3>Image Information</h3>
+                <table class="details-table">
+                    <tr>
+                        <th>Image URL:</th>
+                        <td><a href="${imageSrc}" target="_blank">${imageSrc}</a></td>
+                    </tr>
+                    <tr>
+                        <th>Page:</th>
+                        <td><a href="${pageUrl}" target="_blank">${page.title || pageUrl}</a></td>
+                    </tr>
+                    <tr>
+                        <th>Format:</th>
+                        <td>${format}</td>
+                    </tr>
+                    <tr>
+                        <th>Dimensions:</th>
+                        <td>${dimensions}</td>
+                    </tr>
+                    <tr>
+                        <th>ALT Text:</th>
+                        <td>${alt}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'block';
+}
+
+// Helper function to truncate URLs
+function truncateUrl(url, maxLength) {
+    if (url.length <= maxLength) return url;
+    return url.substring(0, maxLength - 3) + '...';
+}
+
+// Helper function to truncate text
+function truncateText(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
 }
 
 // Display keyword analysis section
@@ -655,6 +1135,658 @@ function setupKeywordSearch(data) {
             runSearch();
         }
     });
+}
+
+// Display Summary Report (Siteliner-style)
+function displaySummaryReport(data) {
+    if (!data || !data.pages) return;
+    
+    const pages = data.pages;
+    const totalPages = pages.length;
+    
+    // Update timestamp
+    const timestampEl = document.getElementById('summaryReportTimestamp');
+    if (timestampEl) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+        const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        timestampEl.textContent = `Siteliner scanned ${totalPages} pages of ${totalPages} found on your site. ${timeStr} ${dateStr}`;
+    }
+    
+    // Calculate Top Issues
+    displayTopIssues(data);
+    
+    // Calculate Page Breakdown
+    displayPageBreakdown(data);
+    
+    // Calculate Duplicate Content Breakdown
+    displayDuplicateContentBreakdown(data);
+    
+    // Calculate Site Comparison
+    displaySiteComparison(data);
+    
+    // Generate Recommendations
+    displayRecommendations(data);
+}
+
+// Display Top Issues
+function displayTopIssues(data) {
+    const container = document.getElementById('topIssuesContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    
+    // Count issues
+    let duplicateContentCount = 0;
+    let brokenLinksCount = 0;
+    let missingMetaCount = 0;
+    let slowPagesCount = 0;
+    
+    pages.forEach(page => {
+        // Duplicate content
+        if (page.is_exact_duplicate || (page.similarity_scores && Object.keys(page.similarity_scores).length > 0)) {
+            const maxSimilarity = page.similarity_scores ? Math.max(...Object.values(page.similarity_scores)) : 100;
+            if (page.is_exact_duplicate || maxSimilarity >= 70) {
+                duplicateContentCount++;
+            }
+        }
+        
+        // Broken links
+        if (page.broken_links && page.broken_links.length > 0) {
+            brokenLinksCount += page.broken_links.length;
+        }
+        
+        // Missing meta
+        if (!page.title || page.title.length < 10 || !page.meta_description || page.meta_description.length < 50) {
+            missingMetaCount++;
+        }
+        
+        // Slow pages (if performance data available)
+        if (page.performance_analysis && page.performance_analysis.load_time > 3000) {
+            slowPagesCount++;
+        }
+    });
+    
+    const issues = [];
+    if (duplicateContentCount > 0) {
+        issues.push({
+            icon: 'fa-copy',
+            color: 'orange',
+            text: `A large amount of duplicate content was found.`,
+            count: duplicateContentCount,
+            link: 'duplicates'
+        });
+    }
+    if (brokenLinksCount > 0) {
+        issues.push({
+            icon: 'fa-unlink',
+            color: 'red',
+            text: `${brokenLinksCount} broken link${brokenLinksCount > 1 ? 's were' : ' was'} found.`,
+            count: brokenLinksCount,
+            link: 'broken-links'
+        });
+    }
+    if (missingMetaCount > 0) {
+        issues.push({
+            icon: 'fa-code',
+            color: 'yellow',
+            text: `${missingMetaCount} page${missingMetaCount > 1 ? 's have' : ' has'} missing or incomplete meta tags.`,
+            count: missingMetaCount,
+            link: 'meta-seo'
+        });
+    }
+    if (slowPagesCount > 0) {
+        issues.push({
+            icon: 'fa-tachometer-alt',
+            color: 'blue',
+            text: `${slowPagesCount} page${slowPagesCount > 1 ? 's are' : ' is'} loading slowly.`,
+            count: slowPagesCount,
+            link: 'performance'
+        });
+    }
+    
+    if (issues.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>No major issues found! Your site looks good.</p></div>';
+        return;
+    }
+    
+    let html = '<div class="top-issues-list">';
+    issues.forEach(issue => {
+        html += `
+            <div class="issue-item" onclick="showSection('${issue.link}')">
+                <div class="issue-icon ${issue.color}">
+                    <i class="fas ${issue.icon}"></i>
+                </div>
+                <div class="issue-content">
+                    <div class="issue-text">${issue.text}</div>
+                    <div class="issue-count">${issue.count} ${issue.count > 1 ? 'issues' : 'issue'}</div>
+                </div>
+                <div class="issue-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display Page Breakdown
+function displayPageBreakdown(data) {
+    const container = document.getElementById('pageBreakdownContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    const skippedPages = data.skipped_pages || [];
+    
+    let normalPages = 0;
+    let skippedRedirect = 0;
+    let skippedNoindex = 0;
+    let skippedOther = 0;
+    let errorPages = 0;
+    
+    pages.forEach(page => {
+        if (page.status_code >= 400) {
+            errorPages++;
+        } else if (page.status_code >= 200 && page.status_code < 300) {
+            normalPages++;
+        }
+    });
+    
+    skippedPages.forEach(skipped => {
+        const reason = skipped.skip_reason || '';
+        if (reason.toLowerCase().includes('redirect')) {
+            skippedRedirect++;
+        } else if (reason.toLowerCase().includes('noindex')) {
+            skippedNoindex++;
+        } else {
+            skippedOther++;
+        }
+    });
+    
+    const breakdown = [
+        { label: 'Normal Pages', count: normalPages, color: 'green', link: 'overview' },
+        { label: 'Skipped, Redirect', count: skippedRedirect, color: 'yellow', link: 'advanced-seo' },
+        { label: 'Skipped, Noindex', count: skippedNoindex, color: 'orange', link: 'advanced-seo' },
+        { label: 'Skipped, Other', count: skippedOther, color: 'blue', link: 'advanced-seo' },
+        { label: 'Errors', count: errorPages, color: 'red', link: 'broken-links' }
+    ];
+    
+    let html = '<div class="page-breakdown-list">';
+    breakdown.forEach(item => {
+        html += `
+            <div class="breakdown-item" onclick="showSection('${item.link}')">
+                <div class="breakdown-label">${item.label}:</div>
+                <div class="breakdown-count ${item.color}">${item.count}</div>
+                <div class="breakdown-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display Duplicate Content Breakdown
+function displayDuplicateContentBreakdown(data) {
+    const container = document.getElementById('duplicateContentBreakdownContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    if (pages.length === 0) {
+        container.innerHTML = '<p>No pages to analyze.</p>';
+        return;
+    }
+    
+    // Calculate content percentages (Siteliner-style)
+    // Total words across all pages
+    let totalWords = 0;
+    pages.forEach(page => {
+        totalWords += page.word_count || 0;
+    });
+    
+    if (totalWords === 0) {
+        container.innerHTML = '<p>No content to analyze.</p>';
+        return;
+    }
+    
+    // Exact duplicates (same content hash)
+    const hashGroups = new Map();
+    pages.forEach(page => {
+        const hash = page.content_hash || '';
+        if (hash) {
+            if (!hashGroups.has(hash)) {
+                hashGroups.set(hash, []);
+            }
+            hashGroups.get(hash).push(page);
+        }
+    });
+    
+    let duplicateWords = 0;
+    hashGroups.forEach(group => {
+        if (group.length > 1) {
+            // All pages in this group are duplicates
+            // Count words from all but one (since they're duplicates)
+            const wordsPerPage = group[0].word_count || 0;
+            duplicateWords += wordsPerPage * (group.length - 1);
+        }
+    });
+    
+    // Common content (high similarity but not exact duplicate)
+    // This includes navigation, headers, footers, etc. that appear on multiple pages
+    let commonWords = 0;
+    const processedPairs = new Set();
+    
+    pages.forEach(page1 => {
+        if (page1.similarity_scores && Object.keys(page1.similarity_scores).length > 0) {
+            Object.entries(page1.similarity_scores).forEach(([url2, similarity]) => {
+                // Create a unique pair identifier
+                const pairKey = [page1.url, url2].sort().join('|');
+                if (processedPairs.has(pairKey)) return;
+                processedPairs.add(pairKey);
+                
+                // Only count if similarity is high (70-90%) but not exact duplicate
+                if (similarity >= 70 && similarity < 90 && !page1.is_exact_duplicate) {
+                    const page1Words = page1.word_count || 0;
+                    // Estimate common words based on similarity
+                    const estimatedCommon = page1Words * (similarity / 100) * 0.5; // 0.5 to avoid double counting
+                    commonWords += estimatedCommon;
+                }
+            });
+        }
+    });
+    
+    // Ensure we don't double-count
+    commonWords = Math.max(0, commonWords - duplicateWords);
+    
+    // Unique content is the remainder
+    const uniqueWords = totalWords - duplicateWords - commonWords;
+    
+    const duplicatePercent = (duplicateWords / totalWords) * 100;
+    const commonPercent = (commonWords / totalWords) * 100;
+    const uniquePercent = (uniqueWords / totalWords) * 100;
+    
+    let html = `
+        <div class="duplicate-content-breakdown-grid">
+            <div class="duplicate-stat" onclick="showSection('duplicates')">
+                <div class="stat-value orange">${duplicatePercent.toFixed(0)}%</div>
+                <div class="stat-label">Duplicate Content</div>
+            </div>
+            <div class="duplicate-stat" onclick="showSection('similarity')">
+                <div class="stat-value yellow">${commonPercent.toFixed(0)}%</div>
+                <div class="stat-label">Common Content</div>
+            </div>
+            <div class="duplicate-stat">
+                <div class="stat-value green">${uniquePercent.toFixed(0)}%</div>
+                <div class="stat-label">Unique Content</div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// Industry benchmarks for percentile calculations
+const BENCHMARKS = {
+    avgPageSize: { median: 156 * 1024 }, // 156KB in bytes
+    avgPageLoadTime: { median: 651 }, // milliseconds
+    wordsPerPage: { median: 846 },
+    textToHtmlRatio: { median: 3 }, // percentage
+    duplicateContent: { median: 17 }, // percentage
+    commonContent: { median: 30 }, // percentage
+    internalLinksPerPage: { median: 24 },
+    externalLinksPerPage: { median: 5 },
+    totalLinksPerPage: { median: 30 },
+    inboundLinksPerPage: { median: 20 }
+};
+
+// Calculate percentile
+function calculatePercentile(value, median, higherIsBetter = false) {
+    if (median === 0) return 50;
+    
+    const ratio = value / median;
+    if (higherIsBetter) {
+        // For metrics where higher is better (like words per page)
+        if (ratio >= 1) {
+            return Math.min(100, 50 + (ratio - 1) * 25);
+        } else {
+            return Math.max(0, 50 - (1 - ratio) * 50);
+        }
+    } else {
+        // For metrics where lower is better (like page size, load time, duplicate content)
+        if (ratio <= 1) {
+            return Math.min(100, 50 + (1 - ratio) * 25);
+        } else {
+            return Math.max(0, 50 - (ratio - 1) * 50);
+        }
+    }
+}
+
+// Display Site Comparison
+function displaySiteComparison(data) {
+    const container = document.getElementById('siteComparisonContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    if (pages.length === 0) {
+        container.innerHTML = '<p>No data available for comparison.</p>';
+        return;
+    }
+    
+    // Calculate metrics
+    let totalPageSize = 0;
+    let totalLoadTime = 0;
+    let totalWords = 0;
+    let totalHtmlSize = 0;
+    let totalTextSize = 0;
+    let totalInternalLinks = 0;
+    let totalExternalLinks = 0;
+    let totalInboundLinks = 0;
+    
+    const inboundLinkCounts = new Map();
+    
+    pages.forEach(page => {
+        // Page size (estimate from HTML if available, otherwise use word count * 5 bytes)
+        const htmlSize = page.html_content ? page.html_content.length : (page.word_count || 0) * 5;
+        totalPageSize += htmlSize;
+        totalHtmlSize += htmlSize;
+        
+        // Load time (from performance analysis if available)
+        if (page.performance_analysis && page.performance_analysis.load_time) {
+            totalLoadTime += page.performance_analysis.load_time;
+        }
+        
+        // Word count
+        totalWords += page.word_count || 0;
+        
+        // Text size
+        if (page.text_content) {
+            totalTextSize += page.text_content.length;
+        }
+        
+        // Links
+        totalInternalLinks += (page.internal_links || []).length;
+        totalExternalLinks += (page.external_links || []).length;
+        
+        // Count inbound links
+        (page.internal_links || []).forEach(link => {
+            inboundLinkCounts.set(link, (inboundLinkCounts.get(link) || 0) + 1);
+        });
+    });
+    
+    totalInboundLinks = Array.from(inboundLinkCounts.values()).reduce((sum, count) => sum + count, 0);
+    
+    const avgPageSize = totalPageSize / pages.length;
+    const avgLoadTime = totalLoadTime / pages.length || 0;
+    const avgWords = totalWords / pages.length;
+    const textToHtmlRatio = totalHtmlSize > 0 ? (totalTextSize / totalHtmlSize) * 100 : 0;
+    const avgInternalLinks = totalInternalLinks / pages.length;
+    const avgExternalLinks = totalExternalLinks / pages.length;
+    const avgTotalLinks = (totalInternalLinks + totalExternalLinks) / pages.length;
+    const avgInboundLinks = totalInboundLinks / pages.length;
+    
+    // Calculate duplicate and common content percentages
+    const duplicatePercent = parseFloat(document.querySelector('.duplicate-stat .stat-value.orange')?.textContent || '0');
+    const commonPercent = parseFloat(document.querySelector('.duplicate-stat .stat-value.yellow')?.textContent || '0');
+    
+    // Calculate percentiles
+    const comparisons = [
+        {
+            label: 'Average Page Size',
+            value: (avgPageSize / 1024).toFixed(0) + 'Kb',
+            percentile: calculatePercentile(avgPageSize, BENCHMARKS.avgPageSize.median, false),
+            median: (BENCHMARKS.avgPageSize.median / 1024).toFixed(0) + 'Kb',
+            higherIsBetter: false
+        },
+        {
+            label: 'Average Page Load Time',
+            value: avgLoadTime > 0 ? avgLoadTime.toFixed(0) + 'ms' : 'N/A',
+            percentile: avgLoadTime > 0 ? calculatePercentile(avgLoadTime, BENCHMARKS.avgPageLoadTime.median, false) : 50,
+            median: BENCHMARKS.avgPageLoadTime.median + 'ms',
+            higherIsBetter: false
+        },
+        {
+            label: 'Number of Words per Page',
+            value: avgWords.toFixed(0),
+            percentile: calculatePercentile(avgWords, BENCHMARKS.wordsPerPage.median, true),
+            median: BENCHMARKS.wordsPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'Text to HTML Ratio',
+            value: textToHtmlRatio.toFixed(0) + '%',
+            percentile: calculatePercentile(textToHtmlRatio, BENCHMARKS.textToHtmlRatio.median, true),
+            median: BENCHMARKS.textToHtmlRatio.median + '%',
+            higherIsBetter: true
+        },
+        {
+            label: 'Duplicate Content',
+            value: duplicatePercent.toFixed(0) + '%',
+            percentile: calculatePercentile(duplicatePercent, BENCHMARKS.duplicateContent.median, false),
+            median: BENCHMARKS.duplicateContent.median + '%',
+            higherIsBetter: false
+        },
+        {
+            label: 'Common Content',
+            value: commonPercent.toFixed(0) + '%',
+            percentile: calculatePercentile(commonPercent, BENCHMARKS.commonContent.median, false),
+            median: BENCHMARKS.commonContent.median + '%',
+            higherIsBetter: false
+        },
+        {
+            label: 'Internal Links per Page',
+            value: avgInternalLinks.toFixed(0),
+            percentile: calculatePercentile(avgInternalLinks, BENCHMARKS.internalLinksPerPage.median, true),
+            median: BENCHMARKS.internalLinksPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'External Links per Page',
+            value: avgExternalLinks.toFixed(0),
+            percentile: calculatePercentile(avgExternalLinks, BENCHMARKS.externalLinksPerPage.median, true),
+            median: BENCHMARKS.externalLinksPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'Total Links per Page',
+            value: avgTotalLinks.toFixed(0),
+            percentile: calculatePercentile(avgTotalLinks, BENCHMARKS.totalLinksPerPage.median, true),
+            median: BENCHMARKS.totalLinksPerPage.median.toString(),
+            higherIsBetter: true
+        },
+        {
+            label: 'Inbound Links per Page',
+            value: avgInboundLinks.toFixed(0),
+            percentile: calculatePercentile(avgInboundLinks, BENCHMARKS.inboundLinksPerPage.median, true),
+            median: BENCHMARKS.inboundLinksPerPage.median.toString(),
+            higherIsBetter: true
+        }
+    ];
+    
+    let html = '<div class="comparison-list">';
+    comparisons.forEach(comp => {
+        const percentileClass = comp.percentile >= 70 ? 'good' : comp.percentile >= 40 ? 'average' : 'poor';
+        const comparisonText = comp.higherIsBetter 
+            ? `The ${comp.label.toLowerCase()} for your site is ${comp.value}. The median for all other sites is ${comp.median}.`
+            : `The ${comp.label.toLowerCase()} for your site is ${comp.value}. The median for all other sites is ${comp.median}.`;
+        const percentileText = comp.higherIsBetter
+            ? `The ${comp.label.toLowerCase()} for your site is ${comp.percentile >= 50 ? 'more' : 'less'} than ${comp.percentile.toFixed(0)}% of all other sites.`
+            : `The ${comp.label.toLowerCase()} for your site is ${comp.percentile >= 50 ? 'longer' : 'shorter'} than ${comp.percentile.toFixed(0)}% of all other sites.`;
+        
+        html += `
+            <div class="comparison-item ${percentileClass}">
+                <div class="comparison-header">
+                    <span class="comparison-value">${comp.value}</span>
+                    <span class="comparison-percentile">${comp.percentile.toFixed(0)}${comp.percentile === 1 ? 'st' : comp.percentile === 2 ? 'nd' : comp.percentile === 3 ? 'rd' : 'th'} percentile</span>
+                </div>
+                <div class="comparison-label">${comp.label}</div>
+                <div class="comparison-description">${comparisonText}</div>
+                <div class="comparison-percentile-text">${percentileText}</div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// Display Recommendations
+function displayRecommendations(data) {
+    const container = document.getElementById('recommendationsContainer');
+    if (!container) return;
+    
+    const pages = data.pages || [];
+    const recommendations = [];
+    
+    // Check for duplicate content
+    const duplicatePages = pages.filter(p => p.is_exact_duplicate || (p.similarity_scores && Object.keys(p.similarity_scores).length > 0));
+    if (duplicatePages.length > 0) {
+        recommendations.push({
+            issue: 'Duplicate Content',
+            severity: 'high',
+            description: `You have ${duplicatePages.length} page${duplicatePages.length > 1 ? 's' : ''} with duplicate or highly similar content.`,
+            fixes: [
+                'Use canonical tags to indicate the preferred version of duplicate pages',
+                'Rewrite duplicate content to make it unique and valuable',
+                'Consolidate similar pages into a single, comprehensive page',
+                'Remove unnecessary duplicate pages and redirect them to the original',
+                'Use 301 redirects for old duplicate URLs to the canonical version'
+            ]
+        });
+    }
+    
+    // Check for broken links
+    let totalBrokenLinks = 0;
+    pages.forEach(page => {
+        if (page.broken_links) {
+            totalBrokenLinks += page.broken_links.length;
+        }
+    });
+    if (totalBrokenLinks > 0) {
+        recommendations.push({
+            issue: 'Broken Links',
+            severity: 'high',
+            description: `You have ${totalBrokenLinks} broken link${totalBrokenLinks > 1 ? 's' : ''} on your site.`,
+            fixes: [
+                'Fix or update broken internal links to point to correct pages',
+                'Remove broken external links or replace them with working alternatives',
+                'Set up 301 redirects for moved or renamed pages',
+                'Regularly audit your links to catch broken links early',
+                'Use a link checker tool to monitor link health'
+            ]
+        });
+    }
+    
+    // Check for missing meta tags
+    const missingMetaPages = pages.filter(p => !p.title || p.title.length < 10 || !p.meta_description || p.meta_description.length < 50);
+    if (missingMetaPages.length > 0) {
+        recommendations.push({
+            issue: 'Missing or Incomplete Meta Tags',
+            severity: 'medium',
+            description: `${missingMetaPages.length} page${missingMetaPages.length > 1 ? 's have' : ' has'} missing or incomplete meta tags.`,
+            fixes: [
+                'Add unique, descriptive title tags (50-60 characters) to all pages',
+                'Write compelling meta descriptions (150-160 characters) for each page',
+                'Include relevant keywords naturally in titles and descriptions',
+                'Ensure each page has a unique title and description',
+                'Use title tags that accurately describe the page content'
+            ]
+        });
+    }
+    
+    // Check for slow pages
+    const slowPages = pages.filter(p => p.performance_analysis && p.performance_analysis.load_time > 3000);
+    if (slowPages.length > 0) {
+        recommendations.push({
+            issue: 'Slow Loading Pages',
+            severity: 'medium',
+            description: `${slowPages.length} page${slowPages.length > 1 ? 's are' : ' is'} loading slowly (over 3 seconds).`,
+            fixes: [
+                'Optimize images by compressing and using modern formats (WebP, AVIF)',
+                'Minify CSS and JavaScript files',
+                'Enable browser caching for static resources',
+                'Use a Content Delivery Network (CDN) for faster delivery',
+                'Reduce server response time and optimize database queries',
+                'Lazy load images and non-critical content'
+            ]
+        });
+    }
+    
+    // Check for low text-to-HTML ratio
+    let totalHtmlSize = 0;
+    let totalTextSize = 0;
+    pages.forEach(page => {
+        totalHtmlSize += page.html_content ? page.html_content.length : (page.word_count || 0) * 5;
+        if (page.text_content) {
+            totalTextSize += page.text_content.length;
+        }
+    });
+    const textToHtmlRatio = totalHtmlSize > 0 ? (totalTextSize / totalHtmlSize) * 100 : 0;
+    if (textToHtmlRatio < 2) {
+        recommendations.push({
+            issue: 'Low Text-to-HTML Ratio',
+            severity: 'medium',
+            description: `Your text-to-HTML ratio is ${textToHtmlRatio.toFixed(1)}%, which is below the recommended 3%.`,
+            fixes: [
+                'Reduce unnecessary HTML markup and code',
+                'Add more valuable text content to your pages',
+                'Remove unused CSS and JavaScript',
+                'Simplify page structure and reduce nested divs',
+                'Move inline styles to external stylesheets'
+            ]
+        });
+    }
+    
+    // Check for missing external links
+    const avgExternalLinks = pages.reduce((sum, p) => sum + (p.external_links || []).length, 0) / pages.length;
+    if (avgExternalLinks < 1) {
+        recommendations.push({
+            issue: 'Low Number of External Links',
+            severity: 'low',
+            description: 'Your site has very few external links, which can limit credibility and SEO value.',
+            fixes: [
+                'Add relevant external links to authoritative sources',
+                'Link to industry resources and research',
+                'Cite sources and references in your content',
+                'Build relationships with other sites for mutual linking',
+                'Ensure external links open in new tabs and use appropriate rel attributes'
+            ]
+        });
+    }
+    
+    if (recommendations.length === 0) {
+        container.innerHTML = '<div class="success-message"><i class="fas fa-check-circle"></i><p>Great job! No major issues found that need immediate attention.</p></div>';
+        return;
+    }
+    
+    let html = '<div class="recommendations-list">';
+    recommendations.forEach(rec => {
+        const severityClass = rec.severity === 'high' ? 'high' : rec.severity === 'medium' ? 'medium' : 'low';
+        html += `
+            <div class="recommendation-item ${severityClass}">
+                <div class="recommendation-header">
+                    <h4 class="recommendation-title">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${rec.issue}
+                    </h4>
+                    <span class="severity-badge ${severityClass}">${rec.severity.toUpperCase()}</span>
+                </div>
+                <p class="recommendation-description">${rec.description}</p>
+                <div class="recommendation-fixes">
+                    <strong>How to Fix:</strong>
+                    <ul>
+                        ${rec.fixes.map(fix => `<li>${fix}</li>`).join('')}
+                    </ul>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
 }
 
 // Display overview section
@@ -2619,7 +3751,8 @@ function showSection(sectionName) {
         const sectionMatch = sectionName.replace('-', ' ').replace('-', ' ');
         if (btnText.includes(sectionMatch) || 
             (sectionName === 'external-links' && btnText.includes('external')) ||
-            (sectionName === 'broken-links' && btnText.includes('broken'))) {
+            (sectionName === 'broken-links' && btnText.includes('broken')) ||
+            (sectionName === 'summary-report' && btnText.includes('summary'))) {
             btn.classList.add('active');
         }
     });
