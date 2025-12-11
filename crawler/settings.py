@@ -19,12 +19,13 @@ ROBOTSTXT_OBEY = True
 
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
-# Slightly aggressive but still polite defaults to improve crawl speed.
-DOWNLOAD_DELAY = 0.25  # 250ms delay between requests
+# Optimized for faster crawling while still being respectful
+DOWNLOAD_DELAY = 0.1  # 100ms delay between requests (reduced from 250ms)
 
 # The download delay setting will honor only one of:
-CONCURRENT_REQUESTS_PER_DOMAIN = 4
-CONCURRENT_REQUESTS_PER_IP = 4
+CONCURRENT_REQUESTS_PER_DOMAIN = 16  # Increased from 4 for faster crawling
+CONCURRENT_REQUESTS_PER_IP = 16
+CONCURRENT_REQUESTS = 32  # Total concurrent requests (increased for speed)
 
 # Disable cookies (enabled by default)
 COOKIES_ENABLED = False
@@ -59,9 +60,9 @@ ITEM_PIPELINES = {
     'crawler.pipelines.ItemStoragePipeline': 500,
 }
 
-# Enable and configure the AutoThrottle extension (disabled by default)
+# Enable and configure the AutoThrottle extension (disabled for maximum speed)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
-AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_ENABLED = False  # Disabled for faster crawling
 AUTOTHROTTLE_START_DELAY = 0.5
 AUTOTHROTTLE_MAX_DELAY = 5
 AUTOTHROTTLE_TARGET_CONCURRENCY = 4.0
@@ -77,16 +78,23 @@ HTTPCACHE_DIR = 'httpcache'
 HTTPCACHE_IGNORE_HTTP_CODES = []
 HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
 
-# Retry settings
+# Retry settings (optimized for faster failure handling)
 RETRY_ENABLED = True
-RETRY_TIMES = 3
+RETRY_TIMES = 2  # Reduced from 3 for faster failure detection
 RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
 
-# Timeout settings
-DOWNLOAD_TIMEOUT = 30
+# Timeout settings (reduced for faster failure detection)
+DOWNLOAD_TIMEOUT = 15  # Reduced from 30 seconds
 
-# Logging
-LOG_LEVEL = 'INFO'
+# Logging (reduced logging for better performance)
+LOG_LEVEL = 'WARNING'  # Reduced from INFO to reduce I/O overhead
+
+# Performance optimization settings
+# Disable expensive operations by default for faster crawling
+ENABLE_PERFORMANCE_ANALYSIS = False  # Performance analysis is expensive, disable by default
+STORE_HTML_CONTENT = True  # Keep enabled for schema analysis, but can be disabled if not needed
+ENABLE_SIMILARITY_DURING_CRAWL = True  # Keep enabled but will use efficient MinHash
+MAX_SIMILARITY_COMPARISONS = 50  # Limit similarity comparisons per page to avoid O(n²) slowdown
 
 # File extensions to ignore
 IGNORED_EXTENSIONS = [

@@ -249,6 +249,15 @@ def start_crawl():
         max_depth = int(data.get('max_depth', 10))
         clear_cache = data.get('clear_cache', True)  # Clear cache by default
         
+        # Analysis configuration from user
+        analysis_config = {
+            'enable_performance_analysis': data.get('enable_performance_analysis', True),  # Default: enabled
+            'store_html_content': data.get('store_html_content', True),  # Default: enabled
+            'enable_similarity_during_crawl': data.get('enable_similarity_during_crawl', True),  # Default: enabled
+            'max_similarity_comparisons': int(data.get('max_similarity_comparisons', 100)),  # Default: 100
+            'crawl_speed': data.get('crawl_speed', 'balanced')  # Default: balanced
+        }
+        
         if not start_url:
             return jsonify({'error': 'URL is required'}), 400
     except Exception as e:
@@ -282,7 +291,7 @@ def start_crawl():
     job_output_dir = os.path.join(base_output_dir, job_id)
     os.makedirs(job_output_dir, exist_ok=True)
     
-    # Store crawl info
+    # Store crawl info with analysis configuration
     crawl_info = {
         'status': 'starting',
         'url': start_url,
@@ -296,7 +305,8 @@ def start_crawl():
         'internal_links': 0,
         'external_links': 0,
         'current_page': '',
-        'errors': []
+        'errors': [],
+        'analysis_config': analysis_config  # Store user's analysis preferences
     }
     active_crawls[job_id] = crawl_info
     save_job_status(job_id, crawl_info)  # Persist to disk for Vercel
@@ -304,7 +314,7 @@ def start_crawl():
     # Start crawl in background thread
     thread = threading.Thread(
         target=run_crawl_async,
-        args=(job_id, start_url, max_depth, job_output_dir),
+        args=(job_id, start_url, max_depth, job_output_dir, analysis_config, clear_cache),
         daemon=True
     )
     thread.start()
@@ -316,9 +326,19 @@ def start_crawl():
     })
 
 
-def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir: str):
+def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir: str, analysis_config: dict = None, clear_cache: bool = True):
     """Run crawl in background thread and emit progress updates."""
     try:
+        # Get analysis config from active_crawls if not provided
+        if analysis_config is None:
+            analysis_config = active_crawls[job_id].get('analysis_config', {
+                'enable_performance_analysis': True,
+                'store_html_content': True,
+                'enable_similarity_during_crawl': True,
+                'max_similarity_comparisons': 100,
+                'crawl_speed': 'balanced'
+            })
+        
         # Update status - Initializing
         active_crawls[job_id]['status'] = 'initializing'
         active_crawls[job_id]['message'] = 'Initializing crawler...'
@@ -354,13 +374,19 @@ def run_crawl_async(job_id: str, start_url: str, max_depth: int, job_output_dir:
         # Track progress by monitoring output directory
         progress_file = os.path.join(job_output_dir, 'progress.json')
         
+        # Get clear_cache setting from active_crawls if not provided
+        if 'clear_cache' not in locals() or clear_cache is None:
+            clear_cache = active_crawls[job_id].get('clear_cache', True)
+        
         runner = CrawlerRunner(
             start_url=start_url,
             max_depth=max_depth,
             output_dir=job_output_dir,  # Use job-specific directory
             use_subprocess=True,
             progress_file=progress_file,
-            job_id=job_id
+            job_id=job_id,
+            analysis_config=analysis_config,  # Pass analysis configuration
+            clear_cache=clear_cache  # Pass cache setting
         )
         
         # Start progress monitoring thread
@@ -1300,4 +1326,5 @@ if __name__ == '__main__':
             print("\nPress Enter to exit...")
             input()
         sys.exit(1)
+
 

@@ -480,33 +480,35 @@
                     <h2>Start New Crawl</h2>
                 </div>
                 <form id="crawlForm">
-                    <div class="form-group">
-                        <label for="url">
-                            <i class="fas fa-link"></i> Website URL
-                        </label>
-                        <input 
-                            type="text" 
-                            id="url" 
-                            name="url" 
-                            placeholder="example.com or https://example.com" 
-                            required
-                        >
-                        <small>Enter domain (example.com) or full URL (https://example.com)</small>
-                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="url">
+                                <i class="fas fa-link"></i> Website URL
+                            </label>
+                            <input 
+                                type="text" 
+                                id="url" 
+                                name="url" 
+                                placeholder="example.com or https://example.com" 
+                                required
+                            >
+                            <small>Enter domain (example.com) or full URL (https://example.com)</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label for="max_depth">
-                            <i class="fas fa-layer-group"></i> Max Depth
-                        </label>
-                        <input 
-                            type="number" 
-                            id="max_depth" 
-                            name="max_depth" 
-                            value="5" 
-                            min="1" 
-                            max="20"
-                        >
-                        <small>How deep to crawl (1-20)</small>
+                        <div class="form-group">
+                            <label for="max_depth">
+                                <i class="fas fa-layer-group"></i> Max Depth
+                            </label>
+                            <input 
+                                type="number" 
+                                id="max_depth" 
+                                name="max_depth" 
+                                value="5" 
+                                min="1" 
+                                max="20"
+                            >
+                            <small>How deep to crawl (1-20)</small>
+                        </div>
                     </div>
                 
                 <div class="form-group">
@@ -523,9 +525,310 @@
                     <small>Uncheck to use cached data (faster but may be outdated)</small>
                 </div>
 
-                    <button type="submit" class="btn btn-primary" id="startBtn">
-                        <i class="fas fa-play"></i> Start Crawling
-                    </button>
+                <!-- Analysis Configuration Section -->
+                <div class="analysis-config-section">
+                    <div class="analysis-config-inline">
+                        <div class="config-title-inline">
+                            <i class="fas fa-microscope"></i>
+                            <span>Analysis Configuration</span>
+                        </div>
+                        <div class="default-badge-inline">
+                            <i class="fas fa-rocket"></i>
+                            <span><strong>Power Mode</strong> • Full Deep Analysis • All Features Enabled</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons Section - Professional Layout -->
+                    <div class="action-buttons-container">
+                        <!-- Primary Action: Start Crawling -->
+                        <div class="primary-action-wrapper">
+                            <button type="submit" class="btn-start-crawl" id="startBtn">
+                                <div class="btn-start-content">
+                                    <i class="fas fa-rocket"></i>
+                                    <span class="btn-start-text">Start Crawling</span>
+                                    <i class="fas fa-arrow-right btn-start-arrow"></i>
+                                </div>
+                                <div class="btn-start-glow"></div>
+                            </button>
+                            <p class="start-crawl-hint">
+                                <i class="fas fa-info-circle"></i>
+                                Full Deep Analysis is enabled - All features active for comprehensive results
+                            </p>
+                        </div>
+                        
+                        <!-- Secondary Action: Advanced Settings -->
+                        <div class="secondary-action-wrapper">
+                            <div class="divider-line">
+                                <span>OR</span>
+                            </div>
+                            <button type="button" class="advanced-toggle-btn" onclick="toggleAdvancedSettings()" id="advancedToggleBtn">
+                                <i class="fas fa-cog"></i>
+                                <span id="advancedToggleText">Show Advanced Settings</span>
+                                <i class="fas fa-chevron-down" id="advancedToggleChevron"></i>
+                            </button>
+                            <p class="advanced-toggle-hint">
+                                Customize analysis features and crawl speed settings
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Options (Hidden by Default) -->
+                    <div class="analysis-options-section" id="advancedOptionsSection" style="display: none;">
+                        <!-- Quick Presets (Only shown in advanced mode) -->
+                        <div class="analysis-presets">
+                            <div class="preset-label">
+                                <i class="fas fa-magic"></i> Quick Presets
+                                <span class="info-badge" title="Click a preset to auto-configure all options">?</span>
+                            </div>
+                            <div class="preset-buttons">
+                                <button type="button" class="preset-btn preset-full" onclick="setAnalysisPreset('full')" data-preset="full">
+                                    <div class="preset-icon">
+                                        <i class="fas fa-check-double"></i>
+                                    </div>
+                                    <div class="preset-content">
+                                        <strong>Full Deep Analysis</strong>
+                                        <span class="preset-badge recommended">Recommended</span>
+                                        <small>Complete analysis • Slowest • Best Results</small>
+                                    </div>
+                                    <div class="preset-arrow">→</div>
+                                </button>
+                                
+                                <button type="button" class="preset-btn preset-standard" onclick="setAnalysisPreset('standard')" data-preset="standard">
+                                    <div class="preset-icon">
+                                        <i class="fas fa-balance-scale"></i>
+                                    </div>
+                                    <div class="preset-content">
+                                        <strong>Standard Analysis</strong>
+                                        <span class="preset-badge balanced">Balanced</span>
+                                        <small>Good coverage • Moderate speed • Quality results</small>
+                                    </div>
+                                    <div class="preset-arrow">→</div>
+                                </button>
+                                
+                                <button type="button" class="preset-btn preset-fast" onclick="setAnalysisPreset('fast')" data-preset="fast">
+                                    <div class="preset-icon">
+                                        <i class="fas fa-bolt"></i>
+                                    </div>
+                                    <div class="preset-content">
+                                        <strong>Fast Analysis</strong>
+                                        <span class="preset-badge fast">Fast</span>
+                                        <small>Basic analysis • Fastest • Quick overview</small>
+                                    </div>
+                                    <div class="preset-arrow">→</div>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="analysis-options" id="advancedOptions">
+                            <!-- Performance Analysis -->
+                            <div class="option-card">
+                                <label class="option-label">
+                                    <input 
+                                        type="checkbox" 
+                                        id="enable_performance_analysis" 
+                                        name="enable_performance_analysis" 
+                                        checked
+                                        class="option-checkbox"
+                                    >
+                                    <div class="option-content">
+                                        <div class="option-header">
+                                            <span class="option-icon performance">
+                                                <i class="fas fa-tachometer-alt"></i>
+                                            </span>
+                                            <div class="option-title">
+                                                <strong>Performance Analysis</strong>
+                                                <span class="feature-badge">Page Speed</span>
+                                            </div>
+                                        </div>
+                                        <p class="option-description">
+                                            Analyzes how fast your pages load and identifies performance bottlenecks. Detects:
+                                        </p>
+                                        <ul class="option-features">
+                                            <li><i class="fas fa-check-circle"></i> Heavy images (>500KB) slowing down pages</li>
+                                            <li><i class="fas fa-check-circle"></i> Large JavaScript/CSS files blocking render</li>
+                                            <li><i class="fas fa-check-circle"></i> Render-blocking resources delaying page display</li>
+                                            <li><i class="fas fa-check-circle"></i> Slow HTML sections with deep nesting</li>
+                                            <li><i class="fas fa-check-circle"></i> Overall page performance score</li>
+                                        </ul>
+                                        <div class="option-impact">
+                                            <i class="fas fa-clock"></i> 
+                                            <span>Adds ~2-5 seconds per page to crawl time</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- HTML Content Storage -->
+                            <div class="option-card">
+                                <label class="option-label">
+                                    <input 
+                                        type="checkbox" 
+                                        id="store_html_content" 
+                                        name="store_html_content" 
+                                        checked
+                                        class="option-checkbox"
+                                    >
+                                    <div class="option-content">
+                                        <div class="option-header">
+                                            <span class="option-icon html">
+                                                <i class="fas fa-code"></i>
+                                            </span>
+                                            <div class="option-title">
+                                                <strong>Store HTML Content</strong>
+                                                <span class="feature-badge required">Required</span>
+                                            </div>
+                                        </div>
+                                        <p class="option-description">
+                                            Stores the complete HTML source code of each page for advanced analysis features:
+                                        </p>
+                                        <ul class="option-features">
+                                            <li><i class="fas fa-check-circle"></i> <strong>Schema Analysis:</strong> Find and validate structured data (JSON-LD, Microdata)</li>
+                                            <li><i class="fas fa-check-circle"></i> <strong>DOM Analysis:</strong> Analyze page structure, nesting depth, and HTML complexity</li>
+                                            <li><i class="fas fa-check-circle"></i> <strong>Meta Tag Analysis:</strong> Deep dive into SEO meta tags and Open Graph</li>
+                                            <li><i class="fas fa-check-circle"></i> <strong>Content Extraction:</strong> Better text content and keyword extraction</li>
+                                        </ul>
+                                        <div class="option-note important">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            <span>Disabling this will prevent Schema Analyzer and DOM Analysis from working</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Similarity Analysis -->
+                            <div class="option-card">
+                                <label class="option-label">
+                                    <input 
+                                        type="checkbox" 
+                                        id="enable_similarity_during_crawl" 
+                                        name="enable_similarity_during_crawl" 
+                                        checked
+                                        class="option-checkbox"
+                                    >
+                                    <div class="option-content">
+                                        <div class="option-header">
+                                            <span class="option-icon similarity">
+                                                <i class="fas fa-copy"></i>
+                                            </span>
+                                            <div class="option-title">
+                                                <strong>Duplicate Content Detection</strong>
+                                                <span class="feature-badge">Similarity</span>
+                                            </div>
+                                        </div>
+                                        <p class="option-description">
+                                            Uses advanced MinHash+LSH algorithm (similar to Siteliner) to find duplicate and similar content:
+                                        </p>
+                                        <ul class="option-features">
+                                            <li><i class="fas fa-check-circle"></i> Detects exact duplicate pages (100% similarity)</li>
+                                            <li><i class="fas fa-check-circle"></i> Finds near-duplicate content (40-99% similar)</li>
+                                            <li><i class="fas fa-check-circle"></i> Identifies pages with high content overlap</li>
+                                            <li><i class="fas fa-check-circle"></i> Helps identify content consolidation opportunities</li>
+                                            <li><i class="fas fa-check-circle"></i> SEO benefit: Avoid duplicate content penalties</li>
+                                        </ul>
+                                        <div class="option-impact">
+                                            <i class="fas fa-clock"></i>
+                                            <span>Processing time depends on comparison count below</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Similarity Comparisons -->
+                            <div class="option-card input-card">
+                                <div class="option-content">
+                                    <div class="option-header">
+                                        <span class="option-icon settings">
+                                            <i class="fas fa-sliders-h"></i>
+                                        </span>
+                                        <div class="option-title">
+                                            <label for="max_similarity_comparisons">
+                                                <strong>Similarity Comparison Depth</strong>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="comparison-control">
+                                        <input 
+                                            type="range" 
+                                            id="max_similarity_comparisons_slider"
+                                            min="10" 
+                                            max="500" 
+                                            value="200"
+                                            step="10"
+                                            class="comparison-slider"
+                                            oninput="updateComparisonValue(this.value)"
+                                        >
+                                        <div class="comparison-display">
+                                            <input 
+                                                type="number" 
+                                                id="max_similarity_comparisons" 
+                                                name="max_similarity_comparisons" 
+                                                value="200" 
+                                                min="10" 
+                                                max="500"
+                                                class="comparison-input"
+                                                oninput="updateComparisonSlider(this.value)"
+                                            >
+                                            <span class="comparison-label">comparisons per page</span>
+                                        </div>
+                                    </div>
+                                    <p class="option-description">
+                                        How many pages to compare each page against for similarity detection. Higher values = more accurate but slower.
+                                    </p>
+                                    <div class="comparison-presets">
+                                        <button type="button" class="mini-btn" onclick="setComparisons(50)">Fast (50)</button>
+                                        <button type="button" class="mini-btn" onclick="setComparisons(100)">Standard (100)</button>
+                                        <button type="button" class="mini-btn active" onclick="setComparisons(200)">Deep (200)</button>
+                                        <button type="button" class="mini-btn" onclick="setComparisons(500)">Maximum (500)</button>
+                                    </div>
+                                    <div class="comparison-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span><strong>Recommended:</strong> 100 for most sites. Use 200+ for very large sites or when you need maximum accuracy.</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Crawl Speed -->
+                            <div class="option-card input-card">
+                                <div class="option-content">
+                                    <div class="option-header">
+                                        <span class="option-icon speed">
+                                            <i class="fas fa-gauge-high"></i>
+                                        </span>
+                                        <div class="option-title">
+                                            <label for="crawl_speed">
+                                                <strong>Crawl Speed Preference</strong>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <select 
+                                        id="crawl_speed" 
+                                        name="crawl_speed" 
+                                        class="speed-select"
+                                    >
+                                        <option value="full" selected>🐢 Full Analysis - Slowest but Most Thorough (0.2s delay, 8 concurrent)</option>
+                                        <option value="balanced">⚖️ Balanced - Recommended (0.1s delay, 16 concurrent)</option>
+                                        <option value="fast">🚀 Fast - Maximum Speed (0.05s delay, 32 concurrent)</option>
+                                    </select>
+                                    <p class="option-description">
+                                        Controls how aggressively the crawler requests pages. "Full Analysis" is more respectful to servers but slower. "Fast" may trigger rate limiting on some servers.
+                                    </p>
+                                    <div class="speed-comparison">
+                                        <div class="speed-item">
+                                            <strong>Full Analysis:</strong> Best for small sites, thorough analysis needed
+                                        </div>
+                                        <div class="speed-item">
+                                            <strong>Balanced:</strong> Good for most sites, optimal speed/quality ratio
+                                        </div>
+                                        <div class="speed-item">
+                                            <strong>Fast:</strong> Best for large sites, when speed is priority
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 </form>
             </div>
 

@@ -324,32 +324,68 @@
                     </div>
                     
                     <div class="section-actions external-links-filters">
-                        <input type="text" id="externalSearchInput" placeholder="Search external links..." class="search-box">
-                        <select id="externalPageFilter" class="filter-select">
-                            <option value="all">All Pages</option>
-                        </select>
-                        <select id="externalCategoryFilter" class="filter-select">
-                            <option value="all">All Categories</option>
-                        </select>
-                        <select id="externalTypeFilter" class="filter-select">
-                            <option value="all">All Link Types</option>
-                            <option value="Follow">Follow</option>
-                            <option value="Nofollow">Nofollow</option>
-                            <option value="Sponsored">Sponsored</option>
-                            <option value="UGC">UGC</option>
-                        </select>
-                        <select id="externalQualityFilter" class="filter-select">
-                            <option value="all">All Quality</option>
-                            <option value="Excellent">Excellent</option>
-                            <option value="Good">Good</option>
-                            <option value="Fair">Fair</option>
-                            <option value="Poor">Poor</option>
-                        </select>
-                        <select id="externalAccessibilityFilter" class="filter-select">
-                            <option value="all">All</option>
-                            <option value="accessible">Accessible</option>
-                            <option value="inaccessible">Inaccessible</option>
-                        </select>
+                        <!-- First Row: Search and Page -->
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label for="externalSearchInput" class="filter-label-top">
+                                    <i class="fas fa-search"></i> Search
+                                </label>
+                                <input type="text" id="externalSearchInput" placeholder="Search external links..." class="search-box">
+                            </div>
+                            <div class="filter-group">
+                                <label for="externalPageFilter" class="filter-label-top">
+                                    <i class="fas fa-file-alt"></i> Page
+                                </label>
+                                <select id="externalPageFilter" class="filter-select">
+                                    <option value="all">All Pages</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- Second Row: Other Filters -->
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label for="externalCategoryFilter" class="filter-label-top">
+                                    <i class="fas fa-tags"></i> Category
+                                </label>
+                                <select id="externalCategoryFilter" class="filter-select">
+                                    <option value="all">All Categories</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="externalTypeFilter" class="filter-label-top">
+                                    <i class="fas fa-link"></i> Type
+                                </label>
+                                <select id="externalTypeFilter" class="filter-select">
+                                    <option value="all">All Types</option>
+                                    <option value="Follow">Follow</option>
+                                    <option value="Nofollow">Nofollow</option>
+                                    <option value="Sponsored">Sponsored</option>
+                                    <option value="UGC">UGC</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="externalQualityFilter" class="filter-label-top">
+                                    <i class="fas fa-star"></i> Quality
+                                </label>
+                                <select id="externalQualityFilter" class="filter-select">
+                                    <option value="all">All Quality</option>
+                                    <option value="Excellent">Excellent</option>
+                                    <option value="Good">Good</option>
+                                    <option value="Fair">Fair</option>
+                                    <option value="Poor">Poor</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="externalAccessibilityFilter" class="filter-label-top">
+                                    <i class="fas fa-check-circle"></i> Status
+                                </label>
+                                <select id="externalAccessibilityFilter" class="filter-select">
+                                    <option value="all">All</option>
+                                    <option value="accessible">Accessible</option>
+                                    <option value="inaccessible">Inaccessible</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <div id="externalLinksContainer">
                         <p class="loading">Loading external links...</p>

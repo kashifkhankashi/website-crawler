@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Show crawl history
+
 async function showHistory() {
     const historyCard = document.getElementById('historyCard');
     const historyContainer = document.getElementById('historyContainer');
@@ -423,6 +424,174 @@ function updateActiveNavItem(activeId) {
         activeItem.classList.add('active');
     }
 }
+
+// Set analysis preset configurations
+function setAnalysisPreset(preset) {
+    const perfAnalysis = document.getElementById('enable_performance_analysis');
+    const htmlContent = document.getElementById('store_html_content');
+    const similarity = document.getElementById('enable_similarity_during_crawl');
+    const maxComparisons = document.getElementById('max_similarity_comparisons');
+    const maxComparisonsSlider = document.getElementById('max_similarity_comparisons_slider');
+    const crawlSpeed = document.getElementById('crawl_speed');
+    
+    // Remove active class from all preset buttons
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Add active class to selected preset
+    const selectedBtn = document.querySelector(`[data-preset="${preset}"]`);
+    if (selectedBtn) {
+        selectedBtn.classList.add('active');
+    }
+    
+    if (preset === 'full') {
+        // Full Deep Analysis - Everything enabled, maximum comparisons, most aggressive
+        if (perfAnalysis) perfAnalysis.checked = true;
+        if (htmlContent) htmlContent.checked = true;
+        if (similarity) similarity.checked = true;
+        if (maxComparisons) maxComparisons.value = 200;
+        if (maxComparisonsSlider) maxComparisonsSlider.value = 200;
+        if (crawlSpeed) crawlSpeed.value = 'full';
+    } else if (preset === 'standard') {
+        // Standard Analysis - Balanced settings
+        if (perfAnalysis) perfAnalysis.checked = true;
+        if (htmlContent) htmlContent.checked = true;
+        if (similarity) similarity.checked = true;
+        if (maxComparisons) maxComparisons.value = 100;
+        if (maxComparisonsSlider) maxComparisonsSlider.value = 100;
+        if (crawlSpeed) crawlSpeed.value = 'balanced';
+    } else if (preset === 'fast') {
+        // Fast Analysis - Minimal analysis for speed
+        if (perfAnalysis) perfAnalysis.checked = false;
+        if (htmlContent) htmlContent.checked = true; // Keep for schema analysis
+        if (similarity) similarity.checked = true;
+        if (maxComparisons) maxComparisons.value = 50;
+        if (maxComparisonsSlider) maxComparisonsSlider.value = 50;
+        if (crawlSpeed) crawlSpeed.value = 'fast';
+    }
+    
+    // Update comparison preset buttons
+    updateComparisonPresets();
+}
+
+// Toggle advanced settings visibility
+function toggleAdvancedSettings() {
+    const advancedSection = document.getElementById('advancedOptionsSection');
+    const toggleBtn = document.getElementById('advancedToggleBtn');
+    const toggleText = document.getElementById('advancedToggleText');
+    const toggleChevron = document.getElementById('advancedToggleChevron');
+    const options = document.getElementById('advancedOptions');
+    
+    if (advancedSection.style.display === 'none' || !advancedSection.style.display) {
+        // Show advanced settings
+        advancedSection.style.display = 'block';
+        toggleText.textContent = 'Hide Advanced Settings';
+        toggleChevron.classList.remove('fa-chevron-down');
+        toggleChevron.classList.add('fa-chevron-up');
+        toggleBtn.classList.add('active');
+        
+        // Expand options if needed
+        setTimeout(() => {
+            if (options) {
+                options.classList.add('expanded');
+            }
+        }, 100);
+    } else {
+        // Hide advanced settings
+        advancedSection.style.display = 'none';
+        toggleText.textContent = 'Show Advanced Settings';
+        toggleChevron.classList.remove('fa-chevron-up');
+        toggleChevron.classList.add('fa-chevron-down');
+        toggleBtn.classList.remove('active');
+        
+        // Reset to full deep analysis when hiding
+        setAnalysisPreset('full');
+    }
+}
+
+// Update comparison value from slider
+function updateComparisonValue(value) {
+    const input = document.getElementById('max_similarity_comparisons');
+    if (input) {
+        input.value = value;
+    }
+    updateComparisonPresets();
+}
+
+// Update comparison slider from input
+function updateComparisonSlider(value) {
+    const slider = document.getElementById('max_similarity_comparisons_slider');
+    if (slider) {
+        const numValue = parseInt(value);
+        if (!isNaN(numValue)) {
+            slider.value = Math.min(Math.max(numValue, 10), 500);
+        }
+    }
+    updateComparisonPresets();
+}
+
+// Set comparison value (from preset buttons)
+function setComparisons(value) {
+    const input = document.getElementById('max_similarity_comparisons');
+    const slider = document.getElementById('max_similarity_comparisons_slider');
+    
+    if (input) input.value = value;
+    if (slider) slider.value = value;
+    
+    updateComparisonPresets();
+}
+
+// Update comparison preset button states
+function updateComparisonPresets() {
+    const input = document.getElementById('max_similarity_comparisons');
+    if (!input) return;
+    
+    const value = parseInt(input.value);
+    document.querySelectorAll('.mini-btn').forEach(btn => {
+        btn.classList.remove('active');
+        const btnValue = parseInt(btn.textContent.match(/\d+/)?.[0]);
+        if (btnValue === value) {
+            btn.classList.add('active');
+        }
+    });
+}
+
+// Initialize with full deep analysis as default (hidden advanced settings)
+document.addEventListener('DOMContentLoaded', function() {
+    // Set default to full deep analysis (most aggressive)
+    setAnalysisPreset('full');
+    
+    // Mark full preset as active (in case user opens advanced)
+    const fullPresetBtn = document.querySelector('[data-preset="full"]');
+    if (fullPresetBtn) {
+        fullPresetBtn.classList.add('active');
+    }
+    
+    // Advanced options are hidden by default - users can show them if needed
+    // This ensures full deep analysis runs by default
+    
+    // Sync slider and input
+    const slider = document.getElementById('max_similarity_comparisons_slider');
+    const input = document.getElementById('max_similarity_comparisons');
+    if (slider && input) {
+        slider.addEventListener('input', function() {
+            input.value = this.value;
+            updateComparisonPresets();
+        });
+        
+        input.addEventListener('input', function() {
+            const value = parseInt(this.value);
+            if (!isNaN(value)) {
+                slider.value = Math.min(Math.max(value, 10), 500);
+                updateComparisonPresets();
+            }
+        });
+    }
+    
+    // Initialize comparison presets
+    updateComparisonPresets();
+});
 
 
 // Start keyword research
@@ -2858,7 +3027,45 @@ async function handleFormSubmit(e) {
     
     // Disable button
     startBtn.disabled = true;
-    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+    startBtn.innerHTML = `
+        <div class="spider-crawl-3d-container">
+            <div class="mock-website-3d">
+                <div class="mock-header">
+                    <div class="mock-logo"></div>
+                    <div class="mock-nav">
+                        <div class="mock-nav-item"></div>
+                        <div class="mock-nav-item"></div>
+                        <div class="mock-nav-item"></div>
+                    </div>
+                </div>
+                <div class="mock-content">
+                    <div class="mock-title-line"></div>
+                    <div class="mock-text-line"></div>
+                    <div class="mock-text-line short"></div>
+                    <div class="mock-content-box"></div>
+                    <div class="mock-content-box small"></div>
+                </div>
+                <div class="mock-footer"></div>
+            </div>
+            <div class="spider-3d">
+                <i class="fas fa-spider"></i>
+            </div>
+            <div class="crawling-text-3d">
+                <span class="crawling-word">Analyzing</span>
+                <span class="crawling-dots">
+                    <span>.</span>
+                    <span>.</span>
+                    <span>.</span>
+                </span>
+            </div>
+            <div class="web-lines">
+                <div class="web-line web-line-1"></div>
+                <div class="web-line web-line-2"></div>
+                <div class="web-line web-line-3"></div>
+                <div class="web-line web-line-4"></div>
+            </div>
+        </div>
+    `;
     
     // Auto-fix URL (add https:// if missing)
     let fixedUrl = url.trim();
@@ -2876,7 +3083,13 @@ async function handleFormSubmit(e) {
                 url: fixedUrl,
                 max_depth: parseInt(maxDepth),
                 output_dir: 'output', // Fixed output directory
-                clear_cache: document.getElementById('clear_cache').checked
+                clear_cache: document.getElementById('clear_cache').checked,
+                // Analysis configuration
+                enable_performance_analysis: document.getElementById('enable_performance_analysis').checked,
+                store_html_content: document.getElementById('store_html_content').checked,
+                enable_similarity_during_crawl: document.getElementById('enable_similarity_during_crawl').checked,
+                max_similarity_comparisons: parseInt(document.getElementById('max_similarity_comparisons').value) || 100,
+                crawl_speed: document.getElementById('crawl_speed').value || 'balanced'
             })
         });
         
@@ -2918,13 +3131,27 @@ async function handleFormSubmit(e) {
         } else {
             alert('Error: ' + data.error);
             startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fas fa-play"></i> Start Crawling';
+            startBtn.innerHTML = `
+                <div class="btn-start-content">
+                    <i class="fas fa-rocket"></i>
+                    <span class="btn-start-text">Start Crawling</span>
+                    <i class="fas fa-arrow-right btn-start-arrow"></i>
+                </div>
+                <div class="btn-start-glow"></div>
+            `;
         }
     } catch (error) {
         console.error('Error:', error);
         alert('Error starting crawl: ' + error.message);
         startBtn.disabled = false;
-        startBtn.innerHTML = '<i class="fas fa-play"></i> Start Crawling';
+        startBtn.innerHTML = `
+            <div class="btn-start-content">
+                <i class="fas fa-rocket"></i>
+                <span class="btn-start-text">Start Crawling</span>
+                <i class="fas fa-arrow-right btn-start-arrow"></i>
+            </div>
+            <div class="btn-start-glow"></div>
+        `;
     }
 }
 
@@ -3106,7 +3333,14 @@ function updateProgress(data) {
         const startBtn = document.getElementById('startBtn');
         if (startBtn) {
             startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fas fa-play"></i> Start Crawling';
+            startBtn.innerHTML = `
+                <div class="btn-start-content">
+                    <i class="fas fa-rocket"></i>
+                    <span class="btn-start-text">Start Crawling</span>
+                    <i class="fas fa-arrow-right btn-start-arrow"></i>
+                </div>
+                <div class="btn-start-glow"></div>
+            `;
         }
         
         // Also show the results card below (for download buttons)
@@ -3120,7 +3354,14 @@ function updateProgress(data) {
         const startBtn = document.getElementById('startBtn');
         if (startBtn) {
             startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fas fa-play"></i> Start Crawling';
+            startBtn.innerHTML = `
+                <div class="btn-start-content">
+                    <i class="fas fa-rocket"></i>
+                    <span class="btn-start-text">Start Crawling</span>
+                    <i class="fas fa-arrow-right btn-start-arrow"></i>
+                </div>
+                <div class="btn-start-glow"></div>
+            `;
         }
     }
 }
