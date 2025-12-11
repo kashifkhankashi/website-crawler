@@ -81,131 +81,74 @@ async function loadResults() {
     }
 }
 
-// Display all sections
+// Display all sections (optimized with async batching to prevent UI blocking)
 function displayAllSections(data) {
-    try {
-        displaySummaryReport(data);
-    } catch (e) {
-        console.error('Error displaying summary report:', e);
-    }
+    // Show loading indicator
+    const loadingIndicator = document.getElementById('loadingIndicator');
     
-    try {
-        displayOverview(data);
-    } catch (e) {
-        console.error('Error displaying overview:', e);
-    }
+    // Execute display functions with batching to prevent UI blocking
+    // Priority: Show critical sections first, then load others asynchronously
+    const criticalSections = [
+        () => { try { displaySummaryReport(data); } catch (e) { console.error('Error displaying summary report:', e); } },
+        () => { try { displayOverview(data); } catch (e) { console.error('Error displaying overview:', e); } },
+        () => { try { updateSeoScoreSummary(data); } catch (e) { console.error('Error updating SEO score:', e); } }
+    ];
     
-    try {
-        displayBrokenLinks(data);
-    } catch (e) {
-        console.error('Error displaying broken links:', e);
-    }
+    const secondarySections = [
+        () => { try { displayBrokenLinks(data); } catch (e) { console.error('Error displaying broken links:', e); } },
+        () => { try { displayDuplicates(data); } catch (e) { console.error('Error displaying duplicates:', e); } },
+        () => { try { displaySimilarity(data); } catch (e) { console.error('Error displaying similarity:', e); } },
+        () => { try { displayExternalLinks(data); } catch (e) { console.error('Error displaying external links:', e); } },
+        () => { try { displayStatistics(data); } catch (e) { console.error('Error displaying statistics:', e); } }
+    ];
     
-    try {
-        displayDuplicates(data);
-    } catch (e) {
-        console.error('Error displaying duplicates:', e);
-    }
+    const asyncSections = [
+        () => { try { displayImageAnalyzer(data); } catch (e) { console.error('Error displaying image analyzer:', e); } },
+        () => { try { displayKeywords(data); setupKeywordSearch(data); } catch (e) { console.error('Error displaying keywords:', e); } },
+        () => { try { displayMetaSeo(data); } catch (e) { console.error('Error displaying meta SEO:', e); } },
+        () => { try { displayPerformanceAnalysis(data); } catch (e) { 
+            console.error('Error displaying performance analysis:', e);
+            const perfContainer = document.getElementById('heavyImagesContainer');
+            if (perfContainer) {
+                perfContainer.innerHTML = '<div class="error">Error loading performance analysis. Please check console for details.</div>';
+            }
+        }},
+        () => { try { displayOrphanPages(data); } catch (e) { console.error('Error displaying orphan pages:', e); } },
+        () => { try { displayCanonicalLinks(data); } catch (e) { console.error('Error displaying canonical links:', e); } },
+        () => { try { displayProfessionalAudit(data); } catch (e) { console.error('Error displaying professional audit:', e); } },
+        () => { try { displayPagePower(data); } catch (e) { console.error('Error displaying page power:', e); } },
+        () => { try { displayAdvancedSEO(data); displaySkippedPages(data); } catch (e) { console.error('Error displaying advanced SEO:', e); } },
+        () => { try { displayDOMAnalysis(data); } catch (e) { console.error('Error displaying DOM analysis:', e); } }
+    ];
     
-    try {
-        displaySimilarity(data);
-    } catch (e) {
-        console.error('Error displaying similarity:', e);
-    }
+    // Execute critical sections immediately
+    criticalSections.forEach(func => func());
     
-    try {
-        displayExternalLinks(data);
-    } catch (e) {
-        console.error('Error displaying external links:', e);
-    }
+    // Execute secondary sections with small delay to allow UI to render
+    setTimeout(() => {
+        secondarySections.forEach(func => func());
+    }, 50);
     
-    try {
-        displayStatistics(data);
-    } catch (e) {
-        console.error('Error displaying statistics:', e);
-    }
-    
-    try {
-        displayImageAnalyzer(data);
-    } catch (e) {
-        console.error('Error displaying image analyzer:', e);
-    }
-    
-    try {
-        displayKeywords(data);
-        setupKeywordSearch(data);
-    } catch (e) {
-        console.error('Error displaying keywords:', e);
-    }
-    
-    try {
-        displayMetaSeo(data);
-    } catch (e) {
-        console.error('Error displaying meta SEO:', e);
-    }
-    
-    try {
-        displayPerformanceAnalysis(data);
-    } catch (e) {
-        console.error('Error displaying performance analysis:', e);
-        // Show error in performance container
-        const perfContainer = document.getElementById('heavyImagesContainer');
-        if (perfContainer) {
-            perfContainer.innerHTML = '<div class="error">Error loading performance analysis. Please check console for details.</div>';
+    // Execute async sections in batches to prevent blocking
+    let batchIndex = 0;
+    const batchSize = 2;
+    const processAsyncBatch = () => {
+        const batch = asyncSections.slice(batchIndex, batchIndex + batchSize);
+        batch.forEach(func => func());
+        batchIndex += batchSize;
+        if (batchIndex < asyncSections.length) {
+            setTimeout(processAsyncBatch, 100);
         }
+    };
+    setTimeout(processAsyncBatch, 200);
+    
+    // Debug: Log data to console (only for small datasets to avoid console lag)
+    if (data.pages && data.pages.length < 100) {
+        console.log('Loaded data:', {
+            totalPages: data.pages.length,
+            hasPages: !!data.pages
+        });
     }
-    
-    try {
-        displayOrphanPages(data);
-    } catch (e) {
-        console.error('Error displaying orphan pages:', e);
-    }
-    
-    try {
-        displayCanonicalLinks(data);
-    } catch (e) {
-        console.error('Error displaying canonical links:', e);
-    }
-    
-    try {
-        displayProfessionalAudit(data);
-    } catch (e) {
-        console.error('Error displaying professional audit:', e);
-    }
-    
-    try {
-        displayPagePower(data);
-    } catch (e) {
-        console.error('Error displaying page power:', e);
-    }
-    
-    try {
-        displayAdvancedSEO(data);
-        displaySkippedPages(data);
-    } catch (e) {
-        console.error('Error displaying advanced SEO:', e);
-    }
-    
-    try {
-        displayDOMAnalysis(data);
-    } catch (e) {
-        console.error('Error displaying DOM analysis:', e);
-    }
-    
-    // Schema analyzer will load when section is shown
-    
-    try {
-        updateSeoScoreSummary(data);
-    } catch (e) {
-        console.error('Error updating SEO score:', e);
-    }
-    
-    // Debug: Log data to console
-    console.log('Loaded data:', {
-        totalPages: data.pages ? data.pages.length : 0,
-        hasPages: !!data.pages,
-        pagesArray: data.pages ? data.pages.length : 'no pages'
-    });
 }
 
 // Meta tag & on-page SEO analysis section
@@ -1857,7 +1800,7 @@ function displayOverview(data) {
         externalLinksEl.textContent = externalLinksTotal;
     }
     
-    // Populate table
+    // Populate table with pagination for performance
     const tbody = document.getElementById('resultsTableBody');
     if (tbody) {
         tbody.innerHTML = '';
@@ -1867,10 +1810,27 @@ function displayOverview(data) {
             return;
         }
         
-        data.pages.forEach((page, index) => {
+        // For large datasets, limit initial display and add pagination
+        const PAGES_PER_PAGE = 100; // Show 100 rows at a time
+        const totalPages = data.pages.length;
+        const pagesToShow = totalPages > PAGES_PER_PAGE ? data.pages.slice(0, PAGES_PER_PAGE) : data.pages;
+        
+        pagesToShow.forEach((page, index) => {
             const row = createTableRow(page, index);
             tbody.appendChild(row);
         });
+        
+        // Add pagination note if there are more pages
+        if (totalPages > PAGES_PER_PAGE) {
+            const paginationRow = document.createElement('tr');
+            paginationRow.innerHTML = `
+                <td colspan="8" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                    <i class="fas fa-info-circle"></i> Showing first ${PAGES_PER_PAGE} of ${totalPages} pages. 
+                    Use search/filters to find specific pages.
+                </td>
+            `;
+            tbody.appendChild(paginationRow);
+        }
     }
 }
 
@@ -6834,30 +6794,184 @@ function displayCoreWebVitals(data) {
             
             ${blockingScripts.length > 0 ? `
                 <div class="audit-issue-section">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Blocking Scripts (${blockingScripts.length})</h4>
-                    <p>Scripts without async/defer attributes can block page rendering.</p>
-                    <div class="table-container">
+                    <div style="margin-bottom: 25px;">
+                        <h4><i class="fas fa-exclamation-triangle"></i> Blocking Scripts (${blockingScripts.length})</h4>
+                        <div class="info-box" style="margin-top: 15px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                            <p style="margin: 0; line-height: 1.8;">
+                                <strong><i class="fas fa-info-circle"></i> What are Blocking Scripts?</strong><br>
+                                Blocking scripts are JavaScript files or inline code that prevent the browser from rendering your page until they finish loading and executing. 
+                                This delays the First Contentful Paint (FCP) and increases Time to Interactive (TTI), negatively impacting your Core Web Vitals scores and SEO rankings.
+                            </p>
+                        </div>
+                        <div class="info-box" style="margin-top: 15px; padding: 15px; background: #d1ecf1; border-left: 4px solid #17a2b8; border-radius: 4px;">
+                            <p style="margin: 0; line-height: 1.8;">
+                                <strong><i class="fas fa-lightbulb"></i> Impact on Performance:</strong><br>
+                                • <strong>Slow Initial Render:</strong> Users see a blank screen longer<br>
+                                • <strong>Poor Mobile Experience:</strong> Especially on slower connections<br>
+                                • <strong>SEO Penalty:</strong> Google penalizes slow-loading pages<br>
+                                • <strong>Increased Bounce Rate:</strong> Users leave before page loads
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container" style="overflow-x: auto;">
                         <table class="audit-table">
                             <thead>
                                 <tr>
+                                    <th>Priority</th>
                                     <th>Page</th>
-                                    <th>Script</th>
-                                    <th>Type</th>
+                                    <th>Script Details</th>
+                                    <th>Location</th>
+                                    <th>Size</th>
+                                    <th>Issue & Fix</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${blockingScripts.slice(0, 50).map(item => `
-                                    <tr>
-                                        <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
-                                        <td>${truncateUrl(item.script, 60)}</td>
-                                        <td><span class="badge badge-warning">${item.type}</span></td>
-                                    </tr>
-                                `).join('')}
+                                ${blockingScripts.slice(0, 100).map((item, index) => {
+                                    const priority = item.priority || 'medium';
+                                    const priorityBadge = priority === 'critical' ? 'danger' : priority === 'high' ? 'warning' : 'info';
+                                    const priorityIcon = priority === 'critical' ? 'fa-exclamation-circle' : priority === 'high' ? 'fa-exclamation-triangle' : 'fa-info-circle';
+                                    const isInline = item.is_inline || item.script === 'inline' || !item.script_src;
+                                    const location = item.location || 'Unknown';
+                                    const purpose = item.purpose || 'Unknown';
+                                    const scriptDisplay = item.script_src ? truncateUrl(item.script_src, 50) : 'Inline Script';
+                                    const sizeDisplay = item.size_kb ? `${item.size_kb} KB` : item.size_bytes ? `${item.size_bytes} bytes` : 'Unknown';
+                                    
+                                    let fixGuide = '';
+                                    if (isInline) {
+                                        fixGuide = `
+                                            <div style="font-size: 0.85rem;">
+                                                <strong style="color: var(--primary-color);">Fix:</strong><br>
+                                                <code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem;">
+                                                    &lt;script defer&gt;...&lt;/script&gt;
+                                                </code><br>
+                                                <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                                                    Move inline script to external file or use defer attribute
+                                                </span>
+                                            </div>
+                                        `;
+                                    } else {
+                                        fixGuide = `
+                                            <div style="font-size: 0.85rem;">
+                                                <strong style="color: var(--primary-color);">Fix:</strong><br>
+                                                <code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem;">
+                                                    &lt;script src="${escapeHtml(scriptDisplay)}" defer&gt;&lt;/script&gt;
+                                                </code><br>
+                                                <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                                                    Add <strong>defer</strong> or <strong>async</strong> attribute
+                                                </span>
+                                            </div>
+                                        `;
+                                    }
+                                    
+                                    return `
+                                        <tr style="border-bottom: 1px solid #e9ecef;">
+                                            <td>
+                                                <span class="badge badge-${priorityBadge}">
+                                                    <i class="fas ${priorityIcon}"></i> ${priority.toUpperCase()}
+                                                </span>
+                                            </td>
+                                            <td style="min-width: 200px;">
+                                                <a href="${item.page}" target="_blank" style="color: var(--primary-color); text-decoration: none;">
+                                                    ${truncateUrl(item.page, 40)}
+                                                </a>
+                                                ${item.page_title ? `<br><small style="color: var(--text-secondary);">${escapeHtml(item.page_title.substring(0, 40))}${item.page_title.length > 40 ? '...' : ''}</small>` : ''}
+                                            </td>
+                                            <td style="min-width: 250px;">
+                                                <div>
+                                                    <strong style="color: var(--text-color);">${scriptDisplay}</strong>
+                                                    ${isInline ? '<span class="badge badge-info" style="margin-left: 5px;">Inline</span>' : '<span class="badge badge-secondary" style="margin-left: 5px;">External</span>'}
+                                                </div>
+                                                <small style="color: var(--text-secondary); font-size: 0.8rem;">
+                                                    <i class="fas fa-tag"></i> ${purpose}
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <span style="color: var(--text-secondary); font-size: 0.9rem;">
+                                                    <i class="fas fa-code"></i> ${location}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span style="color: var(--text-color); font-weight: 600;">
+                                                    ${sizeDisplay}
+                                                </span>
+                                            </td>
+                                            <td style="min-width: 280px;">
+                                                <div style="margin-bottom: 8px;">
+                                                    <strong style="color: var(--danger-color); font-size: 0.85rem;">
+                                                        <i class="fas fa-times-circle"></i> Blocking Page Render
+                                                    </strong>
+                                                </div>
+                                                ${fixGuide}
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
+                    
+                    <!-- Detailed Fix Guide -->
+                    <div style="margin-top: 30px; padding: 25px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                        <h5 style="margin-top: 0; color: var(--primary-color); display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-wrench"></i> Complete Fix Guide
+                        </h5>
+                        <div style="margin-top: 20px;">
+                            <div style="margin-bottom: 20px;">
+                                <h6 style="color: var(--text-color); margin-bottom: 10px; font-size: 1rem;">
+                                    <i class="fas fa-check-circle" style="color: var(--success-color);"></i> For External Scripts:
+                                </h6>
+                                <div style="background: white; padding: 15px; border-radius: 6px; margin-left: 25px;">
+                                    <p style="margin: 0 0 10px 0; color: var(--text-secondary);"><strong>Option 1: Use DEFER</strong> (Recommended for most scripts)</p>
+                                    <code style="display: block; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem;">
+                                        &lt;script src="your-script.js" defer&gt;&lt;/script&gt;
+                                    </code>
+                                    <p style="margin: 0 0 15px 0; font-size: 0.85rem; color: var(--text-secondary);">
+                                        • Scripts execute after HTML parsing completes<br>
+                                        • Maintains execution order<br>
+                                        • Best for scripts that need DOM ready
+                                    </p>
+                                    
+                                    <p style="margin: 15px 0 10px 0; color: var(--text-secondary);"><strong>Option 2: Use ASYNC</strong> (For independent scripts)</p>
+                                    <code style="display: block; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9rem;">
+                                        &lt;script src="analytics.js" async&gt;&lt;/script&gt;
+                                    </code>
+                                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">
+                                        • Scripts execute as soon as downloaded<br>
+                                        • Order of execution not guaranteed<br>
+                                        • Best for analytics, ads, independent scripts
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom: 20px;">
+                                <h6 style="color: var(--text-color); margin-bottom: 10px; font-size: 1rem;">
+                                    <i class="fas fa-check-circle" style="color: var(--success-color);"></i> For Inline Scripts:
+                                </h6>
+                                <div style="background: white; padding: 15px; border-radius: 6px; margin-left: 25px;">
+                                    <p style="margin: 0 0 10px 0; color: var(--text-secondary);"><strong>Best Practice: Move to External File</strong></p>
+                                    <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.8;">
+                                        <li>Create a separate <code>script.js</code> file</li>
+                                        <li>Move inline JavaScript code to that file</li>
+                                        <li>Link it with <code>&lt;script src="script.js" defer&gt;&lt;/script&gt;</code></li>
+                                        <li>If it must be inline, place it at the end of <code>&lt;body&gt;</code> tag</li>
+                                    </ol>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 25px; padding: 15px; background: #fff3cd; border-radius: 6px;">
+                                <p style="margin: 0; color: #856404; line-height: 1.8;">
+                                    <strong><i class="fas fa-exclamation-triangle"></i> Important Notes:</strong><br>
+                                    • Scripts in <code>&lt;head&gt;</code> are more critical - fix these first<br>
+                                    • Critical rendering scripts may need to stay blocking, but minimize them<br>
+                                    • Test your site after making changes to ensure functionality isn't broken<br>
+                                    • Use browser DevTools (Network tab) to verify scripts are loading as expected
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No blocking scripts detected!</p></div>'}
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No blocking scripts detected! Your scripts are properly optimized.</p></div>'}
         </div>
     `;
     
@@ -7282,47 +7396,380 @@ function displayContentAudit(data) {
     container.innerHTML = html;
 }
 
-// Display Mobile Friendliness
+// Display Mobile Friendliness - Comprehensive Analysis
 function displayMobileFriendliness(data) {
     const container = document.getElementById('auditContent');
     if (!container) return;
     
+    if (!data || Object.keys(data).length === 0) {
+        container.innerHTML = `
+            <div class="audit-section">
+                <h3><i class="fas fa-mobile-alt"></i> Mobile SEO Analysis</h3>
+                <div class="info-message">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No mobile analysis data available. Mobile analysis requires HTML content to be stored during crawl.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
     const missingViewport = data.missing_viewport_pages || [];
+    const invalidViewport = data.invalid_viewport_pages || [];
     const missingTouchIcons = data.missing_touch_icons_pages || [];
+    const nonResponsiveImages = data.non_responsive_images || [];
+    const fixedWidthElements = data.fixed_width_elements || [];
+    const flashContent = data.flash_content || [];
+    const mobileMenuIssues = data.mobile_menu_issues || [];
+    const fontSizeIssues = data.font_size_issues || [];
+    const speedMetrics = data.mobile_speed_metrics || {};
+    
+    // Calculate overall mobile score
+    let mobileScore = 100;
+    let issuesFound = 0;
+    if (missingViewport.length > 0) issuesFound += missingViewport.length;
+    if (invalidViewport.length > 0) issuesFound += invalidViewport.length;
+    if (missingTouchIcons.length > 0) issuesFound += 1;
+    if (nonResponsiveImages.length > 0) issuesFound += 1;
+    if (fixedWidthElements.length > 0) issuesFound += 1;
+    if (flashContent.length > 0) issuesFound += flashContent.length;
+    if (mobileMenuIssues.length > 0) issuesFound += 1;
+    if (fontSizeIssues.length > 0) issuesFound += 1;
+    
+    mobileScore = Math.max(0, mobileScore - (issuesFound * 5));
     
     let html = `
         <div class="audit-section">
-            <h3><i class="fas fa-mobile-alt"></i> Mobile-Friendliness Analysis</h3>
+            <h3><i class="fas fa-mobile-alt"></i> Mobile SEO Analysis</h3>
             
-            <div class="audit-summary-cards">
-                <div class="summary-card-small ${missingViewport.length > 0 ? 'warning' : 'success'}">
-                    <div class="card-value">${data.missing_viewport_count || 0}</div>
-                    <div class="card-label">Missing Viewport</div>
+            <!-- Mobile Score Overview -->
+            <div class="mobile-score-overview">
+                <div class="mobile-score-card">
+                    <div class="score-circle-large ${mobileScore >= 80 ? 'good' : mobileScore >= 60 ? 'average' : 'poor'}">
+                        <div class="score-value-large">${mobileScore}</div>
+                        <div class="score-label-large">Mobile Score</div>
+                    </div>
                 </div>
-                <div class="summary-card-small ${missingTouchIcons.length > 0 ? 'warning' : 'success'}">
-                    <div class="card-value">${data.missing_touch_icons_count || 0}</div>
-                    <div class="card-label">Missing Touch Icons</div>
+                <div class="mobile-summary-stats">
+                    <div class="summary-stat">
+                        <i class="fas fa-check-circle" style="color: var(--success-color);"></i>
+                        <span><strong>${speedMetrics.total_pages || 0}</strong> Pages Analyzed</span>
+                    </div>
+                    <div class="summary-stat">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--warning-color);"></i>
+                        <span><strong>${issuesFound}</strong> Issues Found</span>
+                    </div>
+                    <div class="summary-stat">
+                        <i class="fas fa-rocket" style="color: var(--primary-color);"></i>
+                        <span><strong>${speedMetrics.pages_with_performance_data || 0}</strong> Pages with Speed Data</span>
+                    </div>
                 </div>
             </div>
             
-            ${missingViewport.length > 0 ? `
-                <div class="audit-issue-section">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Pages Missing Viewport Tag (${missingViewport.length})</h4>
-                    <p>The viewport meta tag is essential for mobile responsiveness.</p>
-                    <div class="table-container">
-                        <table class="audit-table">
-                            <thead>
-                                <tr><th>Page URL</th></tr>
-                            </thead>
-                            <tbody>
-                                ${missingViewport.slice(0, 100).map(url => `
-                                    <tr><td><a href="${url}" target="_blank">${url}</a></td></tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+            <!-- Mobile Speed Metrics -->
+            ${speedMetrics.pages_with_performance_data > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-tachometer-alt"></i> Mobile Speed Performance</h4>
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-value">${speedMetrics.avg_page_size_kb ? speedMetrics.avg_page_size_kb.toFixed(1) : '0'} KB</div>
+                            <div class="metric-label">Avg Page Size</div>
+                            <div class="metric-status ${speedMetrics.avg_page_size_kb > 500 ? 'poor' : speedMetrics.avg_page_size_kb > 200 ? 'average' : 'good'}">
+                                ${speedMetrics.avg_page_size_kb > 500 ? '⚠ Too Large' : speedMetrics.avg_page_size_kb > 200 ? '⚡ Medium' : '✓ Good'}
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${speedMetrics.pages_with_heavy_images || 0}</div>
+                            <div class="metric-label">Pages with Heavy Images</div>
+                            <div class="metric-status ${speedMetrics.pages_with_heavy_images > 0 ? 'warning' : 'good'}">
+                                ${speedMetrics.pages_with_heavy_images > 0 ? '⚠ Issues' : '✓ None'}
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value">${speedMetrics.pages_with_render_blocking || 0}</div>
+                            <div class="metric-label">Pages with Render Blocking</div>
+                            <div class="metric-status ${speedMetrics.pages_with_render_blocking > 0 ? 'warning' : 'good'}">
+                                ${speedMetrics.pages_with_render_blocking > 0 ? '⚠ Issues' : '✓ None'}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="info-box" style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-left: 4px solid var(--info-color); border-radius: 4px;">
+                        <p style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">
+                            <i class="fas fa-info-circle" style="color: var(--info-color);"></i>
+                            <strong>Tip:</strong> Mobile pages should load in under 3 seconds. Large images and render-blocking resources significantly impact mobile performance.
+                        </p>
                     </div>
                 </div>
-            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>All pages have viewport tags!</p></div>'}
+            ` : ''}
+            
+            <!-- Viewport Issues -->
+            <div class="audit-subsection">
+                <h4><i class="fas fa-window-maximize"></i> Viewport Configuration</h4>
+                
+                ${missingViewport.length > 0 ? `
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Missing Viewport Meta Tag (${missingViewport.length})</h5>
+                        <p>The viewport meta tag is essential for mobile responsiveness. Without it, mobile browsers may render pages at desktop width.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page URL</th>
+                                        <th>Title</th>
+                                        <th>Fix</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${missingViewport.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url || item}" target="_blank">${truncateUrl(item.url || item, 50)}</a></td>
+                                            <td>${escapeHtml(item.title || '')}</td>
+                                            <td><code>&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;</code></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${invalidViewport.length > 0 ? `
+                    <div class="audit-issue-section" style="margin-top: 20px;">
+                        <h5><i class="fas fa-exclamation-circle"></i> Invalid Viewport Configuration (${invalidViewport.length})</h5>
+                        <p>These pages have viewport tags but they're not properly configured for mobile.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page URL</th>
+                                        <th>Current Viewport</th>
+                                        <th>Issue</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${invalidViewport.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                            <td><code>${escapeHtml(item.current || '')}</code></td>
+                                            <td><span class="badge badge-warning">${item.issue || ''}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${missingViewport.length === 0 && invalidViewport.length === 0 ? `
+                    <div class="success-message">
+                        <i class="fas fa-check-circle"></i>
+                        <p>All pages have properly configured viewport tags!</p>
+                    </div>
+                ` : ''}
+            </div>
+            
+            <!-- Responsive Images -->
+            ${nonResponsiveImages.length > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-image"></i> Responsive Images</h4>
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Non-Responsive Images (${nonResponsiveImages.length})</h5>
+                        <p>Images without dimensions or srcset attributes can cause layout shifts on mobile devices.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Image URL</th>
+                                        <th>Issue</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${nonResponsiveImages.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 40)}</a></td>
+                                            <td>${truncateUrl(item.image || '', 50)}</td>
+                                            <td><span class="badge badge-warning">${item.issue || 'Missing dimensions'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Fixed Width Elements -->
+            ${fixedWidthElements.length > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-arrows-alt-h"></i> Fixed Width Elements</h4>
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Fixed Width Elements (${fixedWidthElements.length})</h5>
+                        <p>Fixed-width elements may not fit properly on mobile screens, causing horizontal scrolling or content overflow.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Element</th>
+                                        <th>Width</th>
+                                        <th>Issue</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${fixedWidthElements.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 40)}</a></td>
+                                            <td><code>${item.element || 'unknown'}</code></td>
+                                            <td><strong>${item.width || ''}</strong></td>
+                                            <td><span class="badge badge-warning">${item.issue || ''}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Touch Icons -->
+            ${missingTouchIcons.length > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-mobile-alt"></i> Touch Icons</h4>
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Missing Touch Icons (${missingTouchIcons.length})</h5>
+                        <p>Touch icons improve the experience when users add your site to their mobile home screen.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page URL</th>
+                                        <th>Title</th>
+                                        <th>Fix</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${missingTouchIcons.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url || item}" target="_blank">${truncateUrl(item.url || item, 50)}</a></td>
+                                            <td>${escapeHtml(item.title || '')}</td>
+                                            <td><code>&lt;link rel="apple-touch-icon" href="/icon-192x192.png"&gt;</code></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>Touch icons are properly configured!</p></div>'}
+            
+            <!-- Font Size Issues -->
+            ${fontSizeIssues.length > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-text-height"></i> Readable Text</h4>
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Small Font Sizes (${fontSizeIssues.length})</h5>
+                        <p>Google recommends using font sizes of at least 14px for mobile. Smaller text is hard to read on mobile devices.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Font Size</th>
+                                        <th>Text Preview</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${fontSizeIssues.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 40)}</a></td>
+                                            <td><strong style="color: var(--danger-color);">${item.size || ''}</strong></td>
+                                            <td>${escapeHtml(item.text_preview || '')}...</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Mobile Menu -->
+            ${mobileMenuIssues.length > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-bars"></i> Mobile Navigation</h4>
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Large Navigation Menus (${mobileMenuIssues.length})</h5>
+                        <p>Large navigation menus may not work well on mobile. Consider implementing a hamburger menu or mobile-specific navigation.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Links Count</th>
+                                        <th>Issue</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${mobileMenuIssues.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                            <td><strong>${item.links_count || 0}</strong></td>
+                                            <td><span class="badge badge-warning">${item.issue || ''}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Flash/Plugins -->
+            ${flashContent.length > 0 ? `
+                <div class="audit-subsection">
+                    <h4><i class="fas fa-ban"></i> Unsupported Content</h4>
+                    <div class="audit-issue-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Flash/Plugin Content (${flashContent.length})</h5>
+                        <p>Flash and plugins are not supported on most mobile devices. Replace with HTML5 alternatives.</p>
+                        <div class="table-container">
+                            <table class="audit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Page</th>
+                                        <th>Element Type</th>
+                                        <th>Content Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${flashContent.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                            <td><code>${item.element || ''}</code></td>
+                                            <td><span class="badge badge-danger">${item.type || 'Flash/Plugin'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Mobile SEO Recommendations -->
+            <div class="audit-subsection" style="margin-top: 30px; padding: 20px; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 8px; border-left: 4px solid var(--info-color);">
+                <h4><i class="fas fa-lightbulb"></i> Mobile SEO Best Practices</h4>
+                <ul style="margin: 15px 0; padding-left: 20px; color: var(--text-secondary);">
+                    <li><strong>Viewport Tag:</strong> Always include <code>&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;</code></li>
+                    <li><strong>Responsive Design:</strong> Use relative units (%, em, rem) instead of fixed pixels for widths</li>
+                    <li><strong>Touch Targets:</strong> Ensure buttons and links are at least 44x44 pixels for easy tapping</li>
+                    <li><strong>Font Sizes:</strong> Use at least 14px font size for body text on mobile</li>
+                    <li><strong>Image Optimization:</strong> Use responsive images with srcset and sizes attributes</li>
+                    <li><strong>Page Speed:</strong> Optimize for mobile - aim for load times under 3 seconds</li>
+                    <li><strong>Touch Icons:</strong> Provide apple-touch-icon for better home screen experience</li>
+                    <li><strong>Avoid Flash:</strong> Replace Flash content with HTML5 alternatives</li>
+                </ul>
+            </div>
         </div>
     `;
     
@@ -7411,17 +7858,66 @@ function displayPageSpeedFlags(data) {
     const container = document.getElementById('auditContent');
     if (!container) return;
     
+    if (!data || Object.keys(data).length === 0) {
+        container.innerHTML = `
+            <div class="audit-section">
+                <h3><i class="fas fa-bolt"></i> Page Speed Flags</h3>
+                <div class="info-message">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No page speed data available. Page speed analysis may not have been enabled during the crawl.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
     const largeImages = data.large_images || [];
     const tooManyRedirects = data.too_many_redirects || [];
+    const largeImagesCount = data.large_images_count || largeImages.length;
+    const tooManyRedirectsCount = data.too_many_redirects_count || tooManyRedirects.length;
+    const noCompressionCount = data.no_compression_count || 0;
+    const missingCacheCount = data.missing_cache_count || 0;
     
     let html = `
         <div class="audit-section">
-            <h3><i class="fas fa-bolt"></i> Page Speed Flags</h3>
+            <h3><i class="fas fa-bolt"></i> Page Speed Analysis</h3>
+            
+            <!-- Summary Metrics -->
+            <div class="metrics-grid" style="margin-bottom: 20px;">
+                <div class="metric-card">
+                    <div class="metric-value">${largeImagesCount}</div>
+                    <div class="metric-label">Large Images</div>
+                    <div class="metric-status ${largeImagesCount > 0 ? 'warning' : 'good'}">
+                        ${largeImagesCount > 0 ? '⚠ Issues Found' : '✓ None'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${tooManyRedirectsCount}</div>
+                    <div class="metric-label">Redirect Chains</div>
+                    <div class="metric-status ${tooManyRedirectsCount > 0 ? 'warning' : 'good'}">
+                        ${tooManyRedirectsCount > 0 ? '⚠ Issues Found' : '✓ None'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${noCompressionCount}</div>
+                    <div class="metric-label">No Compression</div>
+                    <div class="metric-status ${noCompressionCount > 0 ? 'warning' : 'good'}">
+                        ${noCompressionCount > 0 ? '⚠ Issues Found' : '✓ None'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${missingCacheCount}</div>
+                    <div class="metric-label">Missing Cache Headers</div>
+                    <div class="metric-status ${missingCacheCount > 0 ? 'warning' : 'good'}">
+                        ${missingCacheCount > 0 ? '⚠ Issues Found' : '✓ None'}
+                    </div>
+                </div>
+            </div>
             
             ${largeImages.length > 0 ? `
                 <div class="audit-issue-section">
                     <h4><i class="fas fa-exclamation-triangle"></i> Large/Unoptimized Images (${largeImages.length})</h4>
-                    <p>Images without width/height attributes can cause layout shifts.</p>
+                    <p>Images without width/height attributes can cause layout shifts and impact page performance.</p>
                     <div class="table-container">
                         <table class="audit-table">
                             <thead>
@@ -7435,26 +7931,26 @@ function displayPageSpeedFlags(data) {
                                 ${largeImages.slice(0, 100).map(item => `
                                     <tr>
                                         <td><a href="${item.page}" target="_blank">${truncateUrl(item.page, 50)}</a></td>
-                                        <td>${truncateUrl(item.image, 60)}</td>
-                                        <td>${item.issue}</td>
+                                        <td>${truncateUrl(item.image || '', 60)}</td>
+                                        <td><span class="badge badge-warning">${item.issue || 'Missing dimensions'}</span></td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     </div>
                 </div>
-            ` : ''}
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No large or unoptimized images detected!</p></div>'}
             
             ${tooManyRedirects.length > 0 ? `
-                <div class="audit-issue-section">
+                <div class="audit-issue-section" style="margin-top: 20px;">
                     <h4><i class="fas fa-exclamation-triangle"></i> Redirect Chains (${tooManyRedirects.length})</h4>
-                    <p>Multiple redirects can slow down page loading.</p>
+                    <p>Multiple redirects can slow down page loading and negatively impact user experience and SEO.</p>
                     <div class="table-container">
                         <table class="audit-table">
                             <thead>
                                 <tr>
-                                    <th>From</th>
-                                    <th>To</th>
+                                    <th>From URL</th>
+                                    <th>Redirects To</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -7468,6 +7964,13 @@ function displayPageSpeedFlags(data) {
                         </table>
                     </div>
                 </div>
+            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No redirect chains detected!</p></div>'}
+            
+            ${largeImages.length === 0 && tooManyRedirects.length === 0 ? `
+                <div class="info-message" style="margin-top: 20px;">
+                    <i class="fas fa-info-circle"></i>
+                    <p><strong>Great!</strong> No major page speed issues detected. Your site appears to be optimized for performance.</p>
+                </div>
             ` : ''}
         </div>
     `;
@@ -7475,59 +7978,441 @@ function displayPageSpeedFlags(data) {
     container.innerHTML = html;
 }
 
-// Display Link Depth
+// Display Link Depth - Comprehensive Analysis
 function displayLinkDepth(data) {
     const container = document.getElementById('auditContent');
     if (!container) return;
     
-    const depths = data.depths || {};
-    const deepPages = data.deep_pages || [];
+    if (!data || Object.keys(data).length === 0) {
+        container.innerHTML = `
+            <div class="audit-section">
+                <h3><i class="fas fa-project-diagram"></i> Internal Link Depth Analysis</h3>
+                <div class="info-message">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No link depth data available. This analysis requires internal link data to be collected during crawl.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
     const avgDepth = data.avg_depth || 0;
     const maxDepth = data.max_depth || 0;
+    const deepPages = data.deep_pages || [];
+    const veryDeepPages = data.very_deep_pages || [];
+    const moderateDeepPages = data.moderate_deep_pages || [];
+    const orphanPages = data.orphan_pages || [];
+    const poorlyLinkedPages = data.poorly_linked_pages || [];
+    const wellLinkedPages = data.well_linked_pages || [];
+    const depthDistribution = data.depth_distribution || {};
+    const totalPages = data.total_pages || 0;
+    const pagesWithDepth = data.pages_with_depth || 0;
+    const unreachablePages = data.unreachable_pages || 0;
+    const pagesDeeperThan3 = data.pages_deeper_than_3 || 0;
+    const homepage = data.homepage || '';
+    
+    // Calculate overall score
+    let linkDepthScore = 100;
+    if (veryDeepPages.length > 0) linkDepthScore -= 30;
+    if (orphanPages.length > 0) linkDepthScore -= 25;
+    if (moderateDeepPages.length > 10) linkDepthScore -= 15;
+    if (poorlyLinkedPages.length > 10) linkDepthScore -= 10;
+    linkDepthScore = Math.max(0, linkDepthScore);
     
     let html = `
         <div class="audit-section">
             <h3><i class="fas fa-project-diagram"></i> Internal Link Depth Analysis</h3>
             
-            <div class="metrics-grid">
+            <!-- Explanation Section -->
+            <div style="margin-bottom: 30px;">
+                <div class="info-box" style="padding: 20px; background: #f0f9ff; border-left: 4px solid var(--info-color); border-radius: 4px; margin-bottom: 20px;">
+                    <p style="margin: 0; line-height: 1.8; color: var(--text-color);">
+                        <strong><i class="fas fa-info-circle" style="color: var(--info-color);"></i> What is Link Depth?</strong><br>
+                        Link depth measures how many clicks (internal links) a user or search engine needs to navigate from your homepage to reach a specific page. 
+                        Pages with lower depth (1-2 clicks) are easier to discover and rank better. Pages deeper than 3 clicks may struggle with visibility and crawling.
+                    </p>
+                </div>
+                
+                <div class="info-box" style="padding: 20px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                    <p style="margin: 0; line-height: 1.8; color: var(--text-color);">
+                        <strong><i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i> Why Does Link Depth Matter?</strong><br>
+                        • <strong>SEO Impact:</strong> Google crawlers follow links. Deep pages may be crawled less frequently<br>
+                        • <strong>User Experience:</strong> Users expect to find content within 2-3 clicks<br>
+                        • <strong>Link Equity:</strong> Pages closer to homepage receive more "link juice"<br>
+                        • <strong>Indexing:</strong> Orphan pages (no incoming links) may not be discovered by search engines
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Score Overview -->
+            <div class="mobile-score-overview" style="margin-bottom: 30px;">
+                <div class="mobile-score-card">
+                    <div class="score-circle-large ${linkDepthScore >= 80 ? 'good' : linkDepthScore >= 60 ? 'average' : 'poor'}">
+                        <div class="score-value-large">${linkDepthScore}</div>
+                        <div class="score-label-large">Link Structure Score</div>
+                    </div>
+                </div>
+                <div class="mobile-summary-stats">
+                    <div class="summary-stat">
+                        <i class="fas fa-sitemap" style="color: var(--primary-color);"></i>
+                        <span><strong>${totalPages}</strong> Total Pages</span>
+                    </div>
+                    <div class="summary-stat">
+                        <i class="fas fa-check-circle" style="color: var(--success-color);"></i>
+                        <span><strong>${pagesWithDepth}</strong> Reachable Pages</span>
+                    </div>
+                    <div class="summary-stat">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--warning-color);"></i>
+                        <span><strong>${unreachablePages + veryDeepPages.length}</strong> Issues Found</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Key Metrics -->
+            <div class="metrics-grid" style="margin-bottom: 30px;">
                 <div class="metric-card">
                     <div class="metric-value">${avgDepth.toFixed(1)}</div>
                     <div class="metric-label">Average Depth</div>
+                    <div class="metric-status ${avgDepth <= 2 ? 'good' : avgDepth <= 3 ? 'average' : 'poor'}">
+                        ${avgDepth <= 2 ? '✓ Good' : avgDepth <= 3 ? '⚡ Average' : '⚠ Deep'}
+                    </div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value">${maxDepth}</div>
                     <div class="metric-label">Maximum Depth</div>
+                    <div class="metric-status ${maxDepth <= 3 ? 'good' : maxDepth <= 5 ? 'average' : 'poor'}">
+                        ${maxDepth <= 3 ? '✓ Good' : maxDepth <= 5 ? '⚡ Average' : '⚠ Very Deep'}
+                    </div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">${deepPages.length}</div>
-                    <div class="metric-label">Deep Pages (>3 clicks)</div>
+                    <div class="metric-value">${pagesDeeperThan3}</div>
+                    <div class="metric-label">Pages > 3 Clicks</div>
+                    <div class="metric-status ${pagesDeeperThan3 === 0 ? 'good' : pagesDeeperThan3 <= 10 ? 'average' : 'poor'}">
+                        ${pagesDeeperThan3 === 0 ? '✓ None' : pagesDeeperThan3 <= 10 ? '⚡ Few' : '⚠ Many'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${depthDistribution[0] || 0}</div>
+                    <div class="metric-label">Depth 0 (Homepage)</div>
+                    <div class="metric-status good">✓ Core</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${depthDistribution[1] || 0}</div>
+                    <div class="metric-label">Depth 1 Pages</div>
+                    <div class="metric-status good">✓ Good</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${depthDistribution[2] || 0}</div>
+                    <div class="metric-label">Depth 2 Pages</div>
+                    <div class="metric-status ${depthDistribution[2] > 0 ? 'good' : 'warning'}">✓ Acceptable</div>
                 </div>
             </div>
             
-            ${deepPages.length > 0 ? `
-                <div class="audit-issue-section">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Deep Pages (${deepPages.length})</h4>
-                    <p>Pages that require more than 3 clicks from the homepage may be harder to discover.</p>
+            <!-- Critical Issues: Orphan Pages -->
+            ${orphanPages.length > 0 ? `
+                <div class="audit-subsection" style="border-left: 4px solid var(--danger-color);">
+                    <h4><i class="fas fa-exclamation-circle" style="color: var(--danger-color);"></i> Critical: Orphan Pages (${orphanPages.length})</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        <strong>These pages have NO incoming internal links</strong> - they cannot be reached by following links from other pages. 
+                        Search engines may never discover or index these pages.
+                    </p>
                     <div class="table-container">
                         <table class="audit-table">
                             <thead>
                                 <tr>
-                                    <th>Page URL</th>
-                                    <th>Depth (Clicks)</th>
+                                    <th>Priority</th>
+                                    <th>Page</th>
+                                    <th>Title</th>
+                                    <th>Outgoing Links</th>
+                                    <th>Issue</th>
+                                    <th>Fix</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${deepPages.slice(0, 100).map(item => `
+                                ${orphanPages.slice(0, 100).map(item => `
                                     <tr>
-                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 60)}</a></td>
-                                        <td>${item.depth}</td>
+                                        <td><span class="badge badge-danger"><i class="fas fa-exclamation-circle"></i> CRITICAL</span></td>
+                                        <td><a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a></td>
+                                        <td>${escapeHtml(item.title || 'No title')}</td>
+                                        <td><strong>${item.outgoing_links || 0}</strong></td>
+                                        <td><span style="color: var(--danger-color); font-weight: 600;">${item.issue || 'Orphan page'}</span></td>
+                                        <td>
+                                            <div style="font-size: 0.85rem;">
+                                                <strong style="color: var(--primary-color);">Add internal links:</strong><br>
+                                                <code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem;">
+                                                    &lt;a href="${escapeHtml(item.url)}"&gt;Link Text&lt;/a&gt;
+                                                </code>
+                                            </div>
+                                        </td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     </div>
                 </div>
-            ` : '<div class="success-message"><i class="fas fa-check-circle"></i><p>No deep pages detected!</p></div>'}
+            ` : ''}
+            
+            <!-- Very Deep Pages -->
+            ${veryDeepPages.length > 0 ? `
+                <div class="audit-subsection" style="border-left: 4px solid var(--danger-color); margin-top: 30px;">
+                    <h4><i class="fas fa-exclamation-triangle" style="color: var(--danger-color);"></i> Critical: Very Deep Pages (${veryDeepPages.length})</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        These pages require <strong>more than 5 clicks</strong> from the homepage. This is very deep and may significantly impact SEO and user experience.
+                    </p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Priority</th>
+                                    <th>Page</th>
+                                    <th>Depth</th>
+                                    <th>Path Preview</th>
+                                    <th>Incoming Links</th>
+                                    <th>Issue & Fix</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${veryDeepPages.slice(0, 100).map(item => {
+                                    const pathPreview = item.path ? item.path.slice(0, 3).map(url => truncateUrl(url, 20)).join(' → ') + ' → ...' : 'Unknown';
+                                    return `
+                                        <tr>
+                                            <td><span class="badge badge-danger"><i class="fas fa-exclamation-circle"></i> CRITICAL</span></td>
+                                            <td>
+                                                <a href="${item.url}" target="_blank">${truncateUrl(item.url, 45)}</a><br>
+                                                <small style="color: var(--text-secondary);">${escapeHtml(item.title || 'No title').substring(0, 40)}...</small>
+                                            </td>
+                                            <td><strong style="font-size: 1.2rem; color: var(--danger-color);">${item.depth}</strong></td>
+                                            <td><small style="color: var(--text-secondary);">${pathPreview}</small></td>
+                                            <td><strong>${item.incoming_links || 0}</strong></td>
+                                            <td>
+                                                <div style="font-size: 0.85rem;">
+                                                    <strong style="color: var(--danger-color);">${item.issue}</strong><br>
+                                                    <span style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 5px; display: block;">
+                                                        <strong>Fix:</strong> Add direct links from homepage or important category pages
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Moderate Deep Pages -->
+            ${moderateDeepPages.length > 0 ? `
+                <div class="audit-subsection" style="border-left: 4px solid #ffc107; margin-top: 30px;">
+                    <h4><i class="fas fa-exclamation-triangle" style="color: #ffc107;"></i> Warning: Deep Pages (${moderateDeepPages.length})</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        These pages require <strong>4-5 clicks</strong> from the homepage. Consider improving their link structure for better SEO.
+                    </p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Priority</th>
+                                    <th>Page</th>
+                                    <th>Depth</th>
+                                    <th>Incoming Links</th>
+                                    <th>Outgoing Links</th>
+                                    <th>Fix</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${moderateDeepPages.slice(0, 100).map(item => `
+                                    <tr>
+                                        <td><span class="badge badge-warning"><i class="fas fa-exclamation-triangle"></i> WARNING</span></td>
+                                        <td>
+                                            <a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a><br>
+                                            <small style="color: var(--text-secondary);">${escapeHtml(item.title || 'No title').substring(0, 40)}...</small>
+                                        </td>
+                                        <td><strong style="color: #ffc107;">${item.depth}</strong></td>
+                                        <td><strong>${item.incoming_links || 0}</strong></td>
+                                        <td><strong>${item.outgoing_links || 0}</strong></td>
+                                        <td>
+                                            <div style="font-size: 0.85rem;">
+                                                <strong style="color: var(--primary-color);">Improve:</strong><br>
+                                                <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                                                    Add links from category or navigation pages
+                                                </span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Poorly Linked Pages -->
+            ${poorlyLinkedPages.length > 0 ? `
+                <div class="audit-subsection" style="border-left: 4px solid #ffc107; margin-top: 30px;">
+                    <h4><i class="fas fa-link" style="color: #ffc107;"></i> Weak Link Structure (${poorlyLinkedPages.length})</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        These pages have weak internal linking - either orphan pages or pages with only one incoming link at deep levels.
+                    </p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Priority</th>
+                                    <th>Page</th>
+                                    <th>Depth</th>
+                                    <th>Incoming Links</th>
+                                    <th>Issue</th>
+                                    <th>Fix</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${poorlyLinkedPages.slice(0, 100).map(item => {
+                                    const priorityClass = item.priority === 'critical' ? 'danger' : 'warning';
+                                    const priorityIcon = item.priority === 'critical' ? 'exclamation-circle' : 'exclamation-triangle';
+                                    return `
+                                        <tr>
+                                            <td><span class="badge badge-${priorityClass}"><i class="fas fa-${priorityIcon}"></i> ${item.priority.toUpperCase()}</span></td>
+                                            <td>
+                                                <a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a><br>
+                                                <small style="color: var(--text-secondary);">${escapeHtml(item.title || 'No title').substring(0, 40)}...</small>
+                                            </td>
+                                            <td><strong>${item.depth || 'N/A'}</strong></td>
+                                            <td><strong style="color: ${item.incoming_links === 0 ? 'var(--danger-color)' : '#ffc107'};">${item.incoming_links}</strong></td>
+                                            <td><span style="color: var(--text-secondary);">${item.issue}</span></td>
+                                            <td>
+                                                <div style="font-size: 0.85rem;">
+                                                    <strong style="color: var(--primary-color);">Action:</strong><br>
+                                                    <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                                                        Add multiple internal links from relevant pages
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Well Linked Pages (Good Examples) -->
+            ${wellLinkedPages.length > 0 ? `
+                <div class="audit-subsection" style="border-left: 4px solid var(--success-color); margin-top: 30px;">
+                    <h4><i class="fas fa-check-circle" style="color: var(--success-color);"></i> Well-Linked Pages (${wellLinkedPages.length})</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        These pages have excellent link structure - shallow depth (≤2 clicks) with multiple incoming links. Use these as examples for improving other pages.
+                    </p>
+                    <div class="table-container">
+                        <table class="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Depth</th>
+                                    <th>Incoming Links</th>
+                                    <th>Outgoing Links</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${wellLinkedPages.slice(0, 50).map(item => `
+                                    <tr>
+                                        <td>
+                                            <a href="${item.url}" target="_blank">${truncateUrl(item.url, 50)}</a><br>
+                                            <small style="color: var(--text-secondary);">${escapeHtml(item.title || 'No title').substring(0, 40)}...</small>
+                                        </td>
+                                        <td><strong style="color: var(--success-color);">${item.depth}</strong></td>
+                                        <td><strong style="color: var(--success-color);">${item.incoming_links}</strong></td>
+                                        <td><strong>${item.outgoing_links}</strong></td>
+                                        <td><span class="badge badge-success"><i class="fas fa-check-circle"></i> Good</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <!-- Comprehensive Fix Guide -->
+            <div style="margin-top: 40px; padding: 30px; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                <h4 style="margin-top: 0; color: var(--primary-color); display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-wrench"></i> Complete Fix Guide
+                </h4>
+                <div style="margin-top: 25px;">
+                    <div style="margin-bottom: 25px;">
+                        <h5 style="color: var(--text-color); margin-bottom: 10px; font-size: 1.1rem;">
+                            <i class="fas fa-check-circle" style="color: var(--success-color);"></i> 1. Fix Orphan Pages (Priority: Critical)
+                        </h5>
+                        <div style="background: white; padding: 20px; border-radius: 6px; margin-left: 25px;">
+                            <p style="margin: 0 0 15px 0; color: var(--text-secondary); line-height: 1.8;">
+                                <strong>Problem:</strong> Orphan pages have no incoming internal links, so search engines cannot discover them.<br><br>
+                                <strong>Solution:</strong>
+                            </p>
+                            <ol style="margin: 0; padding-left: 20px; color: var(--text-secondary); line-height: 2;">
+                                <li>Identify related pages that should link to the orphan page</li>
+                                <li>Add contextual links in content: <code>&lt;a href="/orphan-page"&gt;Relevant Anchor Text&lt;/a&gt;</code></li>
+                                <li>Add links in navigation menus or category pages</li>
+                                <li>Create breadcrumbs or related posts sections</li>
+                                <li>Add to sitemap.xml (helps, but doesn't replace internal links)</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 25px;">
+                        <h5 style="color: var(--text-color); margin-bottom: 10px; font-size: 1.1rem;">
+                            <i class="fas fa-check-circle" style="color: var(--success-color);"></i> 2. Reduce Depth for Deep Pages
+                        </h5>
+                        <div style="background: white; padding: 20px; border-radius: 6px; margin-left: 25px;">
+                            <p style="margin: 0 0 15px 0; color: var(--text-secondary); line-height: 1.8;">
+                                <strong>Target:</strong> Keep important pages within 2-3 clicks from homepage.<br><br>
+                                <strong>Strategies:</strong>
+                            </p>
+                            <ul style="margin: 0; padding-left: 20px; color: var(--text-secondary); line-height: 2;">
+                                <li><strong>Category Pages:</strong> Link important deep pages from category/landing pages</li>
+                                <li><strong>Navigation Menus:</strong> Add key pages to main or footer navigation</li>
+                                <li><strong>Internal Linking:</strong> Create contextual links from high-authority pages</li>
+                                <li><strong>Hub Pages:</strong> Create topic hub pages that link to related content</li>
+                                <li><strong>Related Posts:</strong> Add "related articles" sections to improve link structure</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 25px;">
+                        <h5 style="color: var(--text-color); margin-bottom: 10px; font-size: 1.1rem;">
+                            <i class="fas fa-check-circle" style="color: var(--success-color);"></i> 3. Improve Link Structure Best Practices
+                        </h5>
+                        <div style="background: white; padding: 20px; border-radius: 6px; margin-left: 25px;">
+                            <ul style="margin: 0; padding-left: 20px; color: var(--text-secondary); line-height: 2;">
+                                <li><strong>Homepage:</strong> Link to all major category/important pages (depth 1)</li>
+                                <li><strong>Category Pages:</strong> Link to subcategories and key products/posts (depth 2)</li>
+                                <li><strong>Content Pages:</strong> Link to related content and parent categories (depth 2-3)</li>
+                                <li><strong>Multiple Links:</strong> Important pages should have 3+ incoming links</li>
+                                <li><strong>Anchor Text:</strong> Use descriptive, keyword-rich anchor text</li>
+                                <li><strong>Contextual Links:</strong> Place links naturally within content, not just in navigation</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px; padding: 20px; background: #fff3cd; border-radius: 6px;">
+                        <p style="margin: 0; color: #856404; line-height: 1.8;">
+                            <strong><i class="fas fa-lightbulb"></i> Pro Tips:</strong><br>
+                            • Focus on fixing orphan pages first (highest impact)<br>
+                            • Prioritize pages with high traffic potential or conversion value<br>
+                            • Use breadcrumbs to help both users and search engines understand site structure<br>
+                            • Monitor your site structure regularly - add new pages to internal linking strategy immediately<br>
+                            • Tools like XML sitemaps help, but internal links are more important for SEO
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            ${orphanPages.length === 0 && veryDeepPages.length === 0 && moderateDeepPages.length === 0 ? `
+                <div class="success-message" style="margin-top: 30px;">
+                    <i class="fas fa-check-circle"></i>
+                    <p><strong>Excellent!</strong> Your site has a healthy link structure. All pages are reachable and most are within acceptable depth levels.</p>
+                </div>
+            ` : ''}
         </div>
     `;
     
@@ -8716,9 +9601,15 @@ async function loadSchemaAnalysis() {
     }
 }
 
+// Store schema analysis data globally for filtering
+let schemaAnalysisData = null;
+
 function displaySchemaAnalysis(data) {
     const container = document.getElementById('schemaAnalyzerContainer');
     if (!container) return;
+    
+    // Store data globally for filtering
+    schemaAnalysisData = data;
     
     const totalPages = data.total_schemas || 0;
     const pagesWithSchema = data.pages_with_schema || 0;
@@ -8773,10 +9664,21 @@ function displaySchemaAnalysis(data) {
         <!-- Schema Types Found -->
         <div class="schema-section">
             <h3><i class="fas fa-tags"></i> Schema Types Found on Your Site</h3>
+            <p style="margin-bottom: 15px; color: var(--text-muted); font-size: 0.9rem;">
+                <i class="fas fa-info-circle"></i> Click on any schema type below to filter and view schemas of that type
+            </p>
             ${schemaTypes.length > 0 ? `
-                <div class="schema-types-grid">
+                <div class="schema-types-grid" id="schemaTypesGrid">
+                    <div class="schema-type-badge schema-type-filter-btn ${!window.selectedSchemaType ? 'active' : ''}" 
+                         onclick="filterSchemasByType(null)" 
+                         style="cursor: pointer; transition: all 0.3s ease;">
+                        <i class="fas fa-list"></i> Show All
+                    </div>
                     ${schemaTypes.map(type => `
-                        <div class="schema-type-badge">
+                        <div class="schema-type-badge schema-type-filter-btn" 
+                             onclick="filterSchemasByType('${type.replace(/'/g, "\\'")}')" 
+                             data-schema-type="${type}"
+                             style="cursor: pointer; transition: all 0.3s ease;">
                             <i class="fas fa-code"></i> ${type}
                         </div>
                     `).join('')}
@@ -8790,34 +9692,40 @@ function displaySchemaAnalysis(data) {
         </div>
         
         <!-- Current Schemas by Page -->
-        <div class="schema-section">
-            <h3><i class="fas fa-file-code"></i> Your Current Schemas</h3>
+        <div class="schema-section" id="schemasByPageSection">
+            <h3><i class="fas fa-file-code"></i> Your Current Schemas 
+                <span id="schemaFilterIndicator" style="font-size: 0.8rem; font-weight: normal; color: var(--primary-color); margin-left: 10px;"></span>
+            </h3>
             ${Object.keys(schemasByPage).length > 0 ? `
-                <div class="schema-pages-list">
-                    ${Object.entries(schemasByPage).slice(0, 20).map(([url, schemas]) => `
-                        <div class="schema-page-item">
+                <div class="schema-pages-list" id="schemaPagesList">
+                    ${Object.entries(schemasByPage).map(([url, schemas], pageIdx) => `
+                        <div class="schema-page-item" data-page-url="${url}">
                             <div class="schema-page-header">
                                 <h4><a href="${url}" target="_blank" rel="noopener">${url.length > 80 ? url.substring(0, 80) + '...' : url}</a></h4>
                                 <span class="schema-count-badge">${schemas.length} schema(s)</span>
                             </div>
                             <div class="schema-details">
-                                ${schemas.map((schema, idx) => `
-                                    <div class="schema-item">
+                                ${schemas.map((schema, idx) => {
+                                    const schemaType = schema['@type'] || 'Unknown';
+                                    const uniqueId = `${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}`;
+                                    return `
+                                    <div class="schema-item" data-schema-type="${schemaType}">
                                         <div class="schema-item-header">
-                                            <strong>Schema ${idx + 1}:</strong> ${schema['@type'] || 'Unknown'}
-                                            <button class="btn-small" onclick="toggleSchemaCode('schema-code-${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}')">
+                                            <strong>Schema ${idx + 1}:</strong> 
+                                            <span class="schema-type-label" style="color: var(--primary-color); font-weight: 600;">${schemaType}</span>
+                                            <button class="btn-small" onclick="toggleSchemaCode('schema-code-${uniqueId}')">
                                                 <i class="fas fa-eye"></i> View Code
                                             </button>
                                         </div>
-                                        <div class="schema-item-body" id="schema-code-${url.replace(/[^a-zA-Z0-9]/g, '-')}-${idx}" style="display: none;">
+                                        <div class="schema-item-body" id="schema-code-${uniqueId}" style="display: none;">
                                             <pre><code>${JSON.stringify(schema, null, 2)}</code></pre>
                                         </div>
                                     </div>
-                                `).join('')}
+                                    `;
+                                }).join('')}
                             </div>
                         </div>
                     `).join('')}
-                    ${Object.keys(schemasByPage).length > 20 ? `<p class="info-note">Showing first 20 pages. Total: ${Object.keys(schemasByPage).length} pages with schemas.</p>` : ''}
                 </div>
             ` : `
                 <div class="info-box">
@@ -8937,6 +9845,74 @@ function toggleSchemaCode(id) {
     const element = document.getElementById(id);
     if (element) {
         element.style.display = element.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+// Filter schemas by type
+function filterSchemasByType(schemaType) {
+    // Store selected type
+    window.selectedSchemaType = schemaType;
+    
+    // Update badge styles
+    document.querySelectorAll('.schema-type-filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Mark active badge
+    if (schemaType === null) {
+        // Show All button
+        document.querySelectorAll('.schema-type-filter-btn')[0]?.classList.add('active');
+    } else {
+        document.querySelector(`[data-schema-type="${schemaType}"]`)?.classList.add('active');
+    }
+    
+    // Filter schema items
+    const schemaItems = document.querySelectorAll('.schema-item');
+    const schemaPages = document.querySelectorAll('.schema-page-item');
+    let visibleCount = 0;
+    
+    schemaItems.forEach(item => {
+        const itemType = item.getAttribute('data-schema-type');
+        if (schemaType === null || itemType === schemaType) {
+            item.style.display = 'block';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+    
+    // Show/hide page items based on whether they have visible schemas
+    schemaPages.forEach(pageItem => {
+        if (schemaType === null) {
+            // Show all pages
+            pageItem.style.display = 'block';
+        } else {
+            // Check if page has schemas of the selected type
+            const itemsInPage = pageItem.querySelectorAll('.schema-item');
+            const hasMatchingSchemas = Array.from(itemsInPage).some(item => {
+                const itemType = item.getAttribute('data-schema-type');
+                return itemType === schemaType;
+            });
+            pageItem.style.display = hasMatchingSchemas ? 'block' : 'none';
+        }
+    });
+    
+    // Update filter indicator
+    const indicator = document.getElementById('schemaFilterIndicator');
+    if (indicator) {
+        if (schemaType === null) {
+            indicator.textContent = '';
+        } else {
+            const allItems = document.querySelectorAll(`.schema-item[data-schema-type="${schemaType}"]`);
+            const count = Array.from(allItems).filter(item => item.style.display !== 'none').length;
+            indicator.textContent = `(Filtered: ${count} ${schemaType} schema${count !== 1 ? 's' : ''})`;
+        }
+    }
+    
+    // Scroll to schemas section
+    const section = document.getElementById('schemasByPageSection');
+    if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 

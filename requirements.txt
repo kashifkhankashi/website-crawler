@@ -30,3 +30,7 @@ rake-nltk>=1.0.6
 
 # Build executable
 pyinstaller>=6.0.0
+
+# AI Analysis (Optional - for AI features)
+# Install with: pip install groq
+# groq>=0.4.0

@@ -171,8 +171,13 @@ class SiteSpider(scrapy.Spider):
         Returns:
             PageItem with extracted data
         """
-        # Parse HTML with BeautifulSoup
-        soup = BeautifulSoup(response.text, 'lxml')
+        # Parse HTML with BeautifulSoup (using html.parser for better performance)
+        # Try lxml first (faster if available), fallback to html.parser
+        try:
+            soup = BeautifulSoup(response.text, 'lxml')
+        except Exception:
+            # Fallback to html.parser if lxml fails (pure Python, no C dependencies)
+            soup = BeautifulSoup(response.text, 'html.parser')
         
         # Remove script and style elements
         for script in soup(["script", "style", "noscript"]):
@@ -277,8 +282,15 @@ class SiteSpider(scrapy.Spider):
             if redirect_url:
                 item['redirect_url'] = urljoin(response.url, redirect_url)
         
-        # Run performance analysis if analyzer is available
-        if self.performance_analyzer:
+        # Run performance analysis if analyzer is available and enabled
+        # This is expensive, so check settings first
+        enable_perf_analysis = False
+        try:
+            enable_perf_analysis = self.settings.getbool('ENABLE_PERFORMANCE_ANALYSIS', False)
+        except (AttributeError, KeyError):
+            enable_perf_analysis = False
+        
+        if enable_perf_analysis and self.performance_analyzer:
             try:
                 performance_results = self.performance_analyzer.analyze_page(
                     response.text,
@@ -291,8 +303,18 @@ class SiteSpider(scrapy.Spider):
         else:
             item['performance_analysis'] = {}
         
-        # Store HTML content for advanced analysis (DOM, etc.)
-        item['html_content'] = response.text
+        # Store HTML content for advanced analysis (DOM, schema, etc.)
+        # Check if HTML storage is enabled (can be disabled to save memory)
+        store_html = True
+        try:
+            store_html = self.settings.getbool('STORE_HTML_CONTENT', True)
+        except (AttributeError, KeyError):
+            store_html = True
+        
+        if store_html:
+            item['html_content'] = response.text
+        else:
+            item['html_content'] = ''  # Empty to save memory
         
         return item
 
@@ -300,7 +322,10 @@ class SiteSpider(scrapy.Spider):
         """
         Extract image information (src, alt, basic size attributes) from the page.
         """
-        soup = BeautifulSoup(response.text, 'lxml')
+        try:
+            soup = BeautifulSoup(response.text, 'lxml')
+        except Exception:
+            soup = BeautifulSoup(response.text, 'html.parser')
         base_url = get_base_url(response)
         images: List[dict] = []
 
@@ -347,7 +372,10 @@ class SiteSpider(scrapy.Spider):
         Returns:
             Dictionary with 'internal' and 'external' link lists (with location data)
         """
-        soup = BeautifulSoup(response.text, 'lxml')
+        try:
+            soup = BeautifulSoup(response.text, 'lxml')
+        except Exception:
+            soup = BeautifulSoup(response.text, 'html.parser')
         base_url = get_base_url(response)
         
         internal_links = []

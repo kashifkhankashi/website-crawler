@@ -5671,6 +5671,26 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
+.schema-type-filter-btn {
+    user-select: none;
+}
+
+.schema-type-filter-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    opacity: 0.9;
+}
+
+.schema-type-filter-btn.active {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    transform: scale(1.05);
+}
+
+.schema-type-filter-btn.active:hover {
+    transform: scale(1.08) translateY(-2px);
+}
+
 .schema-pages-list {
     display: flex;
     flex-direction: column;

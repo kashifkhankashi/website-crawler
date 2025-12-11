@@ -123,8 +123,11 @@ class BrokenLinkChecker:
             name = 'link_checker'
             custom_settings = {
                 'ROBOTSTXT_OBEY': False,
-                'DOWNLOAD_DELAY': 0.5,
-                'CONCURRENT_REQUESTS': 10,
+                'DOWNLOAD_DELAY': 0.1,  # Reduced from 0.5 for faster checking
+                'CONCURRENT_REQUESTS': 32,  # Increased from 10 for faster checking
+                'CONCURRENT_REQUESTS_PER_DOMAIN': 16,  # Increased concurrency
+                'DOWNLOAD_TIMEOUT': 15,  # Reduced timeout for faster failure detection
+                'RETRY_TIMES': 1,  # Reduced retries for faster checking
             }
             
             def start_requests(self):
@@ -1080,7 +1083,7 @@ class CrawlerRunner:
     Main crawler runner that orchestrates crawling, link checking, and reporting.
     """
     
-    def __init__(self, start_url: str, max_depth: int = 10, output_dir: str = 'output', use_subprocess: bool = False, progress_file: str = None, job_id: str = None):
+    def __init__(self, start_url: str, max_depth: int = 10, output_dir: str = 'output', use_subprocess: bool = False, progress_file: str = None, job_id: str = None, analysis_config: dict = None, clear_cache: bool = True):
         """
         Initialize the crawler runner.
         
@@ -1091,6 +1094,7 @@ class CrawlerRunner:
             use_subprocess: If True, run crawl in subprocess (for web interface)
             progress_file: File to write progress updates (for web interface)
             job_id: Job ID for progress tracking (for web interface)
+            analysis_config: Dictionary with analysis configuration options
         """
         self.start_url = start_url
         self.max_depth = max_depth
@@ -1098,6 +1102,14 @@ class CrawlerRunner:
         self.use_subprocess = use_subprocess
         self.progress_file = progress_file
         self.job_id = job_id
+        self.analysis_config = analysis_config or {
+            'enable_performance_analysis': True,
+            'store_html_content': True,
+            'enable_similarity_during_crawl': True,
+            'max_similarity_comparisons': 100,
+            'crawl_speed': 'balanced'
+        }
+        self.clear_cache = clear_cache  # Store clear_cache setting
         self.crawled_items: List[dict] = []
         self.all_internal_links: Set[str] = set()
         self.skipped_pages: List[dict] = []  # Track skipped pages
@@ -1156,6 +1168,24 @@ class CrawlerRunner:
                 os.makedirs(os.path.dirname(self.progress_file), exist_ok=True)
             
             try:
+                # Prepare analysis config for injection into script
+                # Convert to Python dict syntax (not JSON) for embedding in Python script
+                # Need to use Python booleans (True/False) not JSON booleans (true/false)
+                config_items = []
+                for key, value in self.analysis_config.items():
+                    if isinstance(value, bool):
+                        config_items.append(f'"{key}": {str(value)}')  # True/False (capitalized)
+                    elif isinstance(value, (int, float)):
+                        config_items.append(f'"{key}": {value}')
+                    elif isinstance(value, str):
+                        config_items.append(f'"{key}": "{value}"')
+                    else:
+                        config_items.append(f'"{key}": {repr(value)}')
+                analysis_config_python = '{' + ', '.join(config_items) + '}'
+                
+                # Prepare clear_cache setting
+                clear_cache_python = str(self.clear_cache)  # True or False
+                
                 # Write script with progress tracking
                 script_content = f'''import sys
 import os
@@ -1172,6 +1202,40 @@ from crawler.pipelines import ItemStoragePipeline
 
 # Clear previous collections
 ItemStoragePipeline.clear()
+
+# Load analysis configuration
+analysis_config = {analysis_config_python}
+
+# Update settings based on analysis configuration
+settings = get_project_settings()
+settings.set('ENABLE_PERFORMANCE_ANALYSIS', analysis_config.get('enable_performance_analysis', True))
+settings.set('STORE_HTML_CONTENT', analysis_config.get('store_html_content', True))
+settings.set('ENABLE_SIMILARITY_DURING_CRAWL', analysis_config.get('enable_similarity_during_crawl', True))
+settings.set('MAX_SIMILARITY_COMPARISONS', analysis_config.get('max_similarity_comparisons', 100))
+
+# Set HTTP cache based on clear_cache setting
+# If clear_cache is True, disable cache (get fresh data)
+# If clear_cache is False, enable cache (use cached data)
+clear_cache = {clear_cache_python}
+settings.set('HTTPCACHE_ENABLED', not clear_cache)
+
+# Apply crawl speed settings
+crawl_speed = analysis_config.get('crawl_speed', 'balanced')
+if crawl_speed == 'full':
+    # Full analysis: slower, more thorough
+    settings.set('DOWNLOAD_DELAY', 0.2)
+    settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', 8)
+    settings.set('CONCURRENT_REQUESTS', 16)
+elif crawl_speed == 'fast':
+    # Fast: maximum speed
+    settings.set('DOWNLOAD_DELAY', 0.05)
+    settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', 32)
+    settings.set('CONCURRENT_REQUESTS', 64)
+else:
+    # Balanced: default optimized settings
+    settings.set('DOWNLOAD_DELAY', 0.1)
+    settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', 16)
+    settings.set('CONCURRENT_REQUESTS', 32)
 
 # Progress tracking function
 def update_progress():
@@ -1263,7 +1327,7 @@ class ProgressPipeline:
 # Note: ProgressPipeline is now defined above in the update_progress section
 
 # Configure and run
-settings = get_project_settings()
+# Settings already configured above with analysis_config
 # Add progress pipeline and skipped pages pipeline
 original_pipelines = settings.get("ITEM_PIPELINES", {{}})
 settings["ITEM_PIPELINES"] = original_pipelines.copy()
@@ -1377,7 +1441,7 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
                 # Keep progress file for a bit, then clean up
                 if os.path.exists(progress_file_path) and not self.progress_file:
                     try:
-                        time.sleep(2)
+                        time.sleep(0.5)  # Reduced from 2 seconds for faster cleanup
                         os.remove(progress_file_path)
                     except:
                         pass
@@ -1397,6 +1461,27 @@ with open(r"{result_file.replace(chr(92), chr(92)+chr(92))}", "w", encoding="utf
             
             # Add pipeline to settings
             settings["ITEM_PIPELINES"]["__main__.SkippedPagesPipeline"] = 999
+            
+            # Apply analysis configuration to settings
+            settings.set('ENABLE_PERFORMANCE_ANALYSIS', self.analysis_config.get('enable_performance_analysis', True))
+            settings.set('STORE_HTML_CONTENT', self.analysis_config.get('store_html_content', True))
+            settings.set('ENABLE_SIMILARITY_DURING_CRAWL', self.analysis_config.get('enable_similarity_during_crawl', True))
+            settings.set('MAX_SIMILARITY_COMPARISONS', self.analysis_config.get('max_similarity_comparisons', 100))
+            
+            # Apply crawl speed settings
+            crawl_speed = self.analysis_config.get('crawl_speed', 'balanced')
+            if crawl_speed == 'full':
+                settings.set('DOWNLOAD_DELAY', 0.2)
+                settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', 8)
+                settings.set('CONCURRENT_REQUESTS', 16)
+            elif crawl_speed == 'fast':
+                settings.set('DOWNLOAD_DELAY', 0.05)
+                settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', 32)
+                settings.set('CONCURRENT_REQUESTS', 64)
+            else:  # balanced
+                settings.set('DOWNLOAD_DELAY', 0.1)
+                settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', 16)
+                settings.set('CONCURRENT_REQUESTS', 32)
             
             process = CrawlerProcess(settings)
             process.crawl(SiteSpider, start_url=self.start_url, max_depth=self.max_depth)

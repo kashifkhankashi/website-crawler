@@ -171,36 +171,57 @@ class DuplicateDetectionPipeline:
         # Use advanced analyzer if available (MinHash+LSH similar to Siteliner)
         if self.advanced_analyzer:
             try:
-                # Process page with advanced analyzer (includes tags/categories in content)
-                self.advanced_analyzer.process_page(url, text_content, html_content)
+                # Check if similarity during crawl is enabled (can be disabled for speed)
+                enable_similarity_during_crawl = True
+                try:
+                    enable_similarity_during_crawl = spider.settings.getbool('ENABLE_SIMILARITY_DURING_CRAWL', True)
+                except (AttributeError, KeyError):
+                    enable_similarity_during_crawl = True
                 
-                # Update stored content with normalized version that includes tags/categories
-                # The analyzer's process_page method now includes tags/categories in normalization
-                normalized_with_tags = self.advanced_analyzer.url_to_normalized_text.get(url, text_content)
-                self.url_to_content[url] = normalized_with_tags
+                # Get max comparisons limit
+                max_comparisons = 50
+                try:
+                    max_comparisons = spider.settings.getint('MAX_SIMILARITY_COMPARISONS', 50)
+                except (AttributeError, KeyError):
+                    max_comparisons = 50
                 
-                # Find candidates using LSH
-                signature = self.advanced_analyzer.url_to_signature.get(url)
-                if signature:
-                    candidates = self.advanced_analyzer.minhash_lsh.find_candidates(url, signature)
+                if enable_similarity_during_crawl:
+                    # Process page with advanced analyzer (includes tags/categories in content)
+                    self.advanced_analyzer.process_page(url, text_content, html_content)
                     
-                    # Calculate similarity for candidates
-                    similarity_scores = {}
-                    text1 = normalized_with_tags  # Use normalized text with tags/categories
-                    for candidate_url in candidates:
-                        # Get normalized text (with tags/categories) for candidate
-                        text2 = self.advanced_analyzer.url_to_normalized_text.get(candidate_url, '')
-                        if not text2:
-                            text2 = self.url_to_content.get(candidate_url, '')
-                        if text2:
-                            similarity = self.advanced_analyzer.calculate_similarity(
-                                text1, text2, url, candidate_url
-                            )
-                            if similarity >= 0.40:  # Only store if similarity >= 40%
-                                similarity_scores[candidate_url] = round(similarity * 100, 2)
+                    # Update stored content with normalized version that includes tags/categories
+                    # The analyzer's process_page method now includes tags/categories in normalization
+                    normalized_with_tags = self.advanced_analyzer.url_to_normalized_text.get(url, text_content)
+                    self.url_to_content[url] = normalized_with_tags
                     
-                    item['similarity_scores'] = similarity_scores
+                    # Find candidates using LSH (more efficient than comparing all pairs)
+                    signature = self.advanced_analyzer.url_to_signature.get(url)
+                    if signature:
+                        candidates = self.advanced_analyzer.minhash_lsh.find_candidates(url, signature)
+                        
+                        # Limit comparisons to avoid slowdown on large sites
+                        candidates = candidates[:max_comparisons]
+                        
+                        # Calculate similarity for candidates
+                        similarity_scores = {}
+                        text1 = normalized_with_tags  # Use normalized text with tags/categories
+                        for candidate_url in candidates:
+                            # Get normalized text (with tags/categories) for candidate
+                            text2 = self.advanced_analyzer.url_to_normalized_text.get(candidate_url, '')
+                            if not text2:
+                                text2 = self.url_to_content.get(candidate_url, '')
+                            if text2:
+                                similarity = self.advanced_analyzer.calculate_similarity(
+                                    text1, text2, url, candidate_url
+                                )
+                                if similarity >= 0.40:  # Only store if similarity >= 40%
+                                    similarity_scores[candidate_url] = round(similarity * 100, 2)
+                        
+                        item['similarity_scores'] = similarity_scores
+                    else:
+                        item['similarity_scores'] = {}
                 else:
+                    # Similarity disabled during crawl - will be calculated at end
                     item['similarity_scores'] = {}
             except Exception as e:
                 # Fallback to basic method if advanced analyzer fails
