@@ -489,59 +489,93 @@
                         </div>
                     </div>
                     
-                    <!-- Pages with Issues Summary -->
-                    <div class="performance-pages-summary" id="performancePagesSummary" style="display: none;">
-                        <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-                            <i class="fas fa-list-ul"></i> Pages with Performance Issues
-                        </h3>
-                        <div class="pages-summary-table-container">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Page URL</th>
-                                        <th>Heavy Images</th>
-                                        <th>Slow JS/CSS</th>
-                                        <th>Slow Sections</th>
-                                        <th>Slow Components</th>
-                                        <th>Render-Blocking</th>
-                                        <th>Total Issues</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="performancePagesSummaryBody">
-                                    <tr><td colspan="8" class="loading">Loading page summary...</td></tr>
-                                </tbody>
-                            </table>
+                    <!-- Performance Tabs -->
+                    <div class="performance-tabs-container" style="margin-top: 30px;">
+                        <div class="performance-tabs-nav" id="performanceTabsNav">
+                            <button class="performance-tab-btn active" data-tab="overview" onclick="switchPerformanceTab('overview')">
+                                <i class="fas fa-chart-line"></i> Overview
+                            </button>
+                            <button class="performance-tab-btn" data-tab="heavy-images" onclick="switchPerformanceTab('heavy-images')">
+                                <i class="fas fa-image"></i> Heavy Images
+                                <span class="tab-badge" id="tabBadgeHeavyImages">0</span>
+                            </button>
+                            <button class="performance-tab-btn" data-tab="slow-files" onclick="switchPerformanceTab('slow-files')">
+                                <i class="fas fa-file-code"></i> Slow JS/CSS
+                                <span class="tab-badge" id="tabBadgeSlowFiles">0</span>
+                            </button>
+                            <button class="performance-tab-btn" data-tab="slow-sections" onclick="switchPerformanceTab('slow-sections')">
+                                <i class="fas fa-code"></i> Slow HTML Sections
+                                <span class="tab-badge" id="tabBadgeSlowSections">0</span>
+                            </button>
+                            <button class="performance-tab-btn" data-tab="slow-components" onclick="switchPerformanceTab('slow-components')">
+                                <i class="fas fa-puzzle-piece"></i> Slow Components
+                                <span class="tab-badge" id="tabBadgeSlowComponents">0</span>
+                            </button>
+                            <button class="performance-tab-btn" data-tab="render-blocking" onclick="switchPerformanceTab('render-blocking')">
+                                <i class="fas fa-ban"></i> Render-Blocking
+                                <span class="tab-badge" id="tabBadgeRenderBlocking">0</span>
+                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="performance-grid">
-                        <div class="performance-column">
-                            <h3><i class="fas fa-image"></i> Heavy Images</h3>
+                        
+                        <!-- Overview Tab -->
+                        <div class="performance-tab-content active" id="performanceTabOverview">
+                            <div class="performance-pages-summary" id="performancePagesSummary">
+                                <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                                    <i class="fas fa-list-ul"></i> All Pages with Performance Issues
+                                </h3>
+                                <div class="table-container">
+                                    <table class="audit-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Status</th>
+                                                <th>Page</th>
+                                                <th>Heavy Images</th>
+                                                <th>Slow JS/CSS</th>
+                                                <th>Slow Sections</th>
+                                                <th>Slow Components</th>
+                                                <th>Render-Blocking</th>
+                                                <th>Total Issues</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="performancePagesSummaryBody">
+                                            <tr><td colspan="9" class="loading">Loading page summary...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Heavy Images Tab -->
+                        <div class="performance-tab-content" id="performanceTabHeavyImages">
                             <div id="heavyImagesContainer">
                                 <p class="loading">Analyzing images...</p>
                             </div>
                         </div>
-                        <div class="performance-column">
-                            <h3><i class="fas fa-file-code"></i> Slow JS/CSS Files</h3>
+                        
+                        <!-- Slow JS/CSS Tab -->
+                        <div class="performance-tab-content" id="performanceTabSlowFiles">
                             <div id="slowJsCssContainer">
                                 <p class="loading">Analyzing resources...</p>
                             </div>
                         </div>
-                        <div class="performance-column">
-                            <h3><i class="fas fa-code"></i> Slow HTML Sections</h3>
+                        
+                        <!-- Slow HTML Sections Tab -->
+                        <div class="performance-tab-content" id="performanceTabSlowSections">
                             <div id="slowHtmlSectionsContainer">
                                 <p class="loading">Analyzing structure...</p>
                             </div>
                         </div>
-                        <div class="performance-column">
-                            <h3><i class="fas fa-puzzle-piece"></i> Slow Components</h3>
+                        
+                        <!-- Slow Components Tab -->
+                        <div class="performance-tab-content" id="performanceTabSlowComponents">
                             <div id="slowComponentsContainer">
                                 <p class="loading">Analyzing components...</p>
                             </div>
                         </div>
-                        <div class="performance-column full-width">
-                            <h3><i class="fas fa-ban"></i> Render-Blocking Resources</h3>
+                        
+                        <!-- Render-Blocking Tab -->
+                        <div class="performance-tab-content" id="performanceTabRenderBlocking">
                             <div id="renderBlockingContainer">
                                 <p class="loading">Checking render-blocking resources...</p>
                             </div>

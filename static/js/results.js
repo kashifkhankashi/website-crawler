@@ -4602,7 +4602,14 @@ function displayPerformanceAnalysis(data) {
     );
     displayPagesPerformanceSummary(pagesSummary);
     
-    // Display heavy images with enhanced UI
+    // Update tab badges
+    document.getElementById('tabBadgeHeavyImages').textContent = allHeavyImages.length;
+    document.getElementById('tabBadgeSlowFiles').textContent = allSlowJsCss.length;
+    document.getElementById('tabBadgeSlowSections').textContent = allSlowHtmlSections.length;
+    document.getElementById('tabBadgeSlowComponents').textContent = allSlowComponents.length;
+    document.getElementById('tabBadgeRenderBlocking').textContent = allRenderBlocking.length;
+    
+    // Display heavy images with table UI
     if (allHeavyImages.length === 0) {
         heavyImagesContainer.innerHTML = `
             <div class="success-message">
@@ -4612,96 +4619,101 @@ function displayPerformanceAnalysis(data) {
         `;
     } else {
         let html = `
-            <div class="performance-issue-intro">
-                <div class="issue-description">
-                    <h4><i class="fas fa-info-circle"></i> About Heavy Images</h4>
-                    <p>Large image files significantly slow down page load times. Images over 200KB can cause:</p>
-                    <ul>
-                        <li>Increased bandwidth usage</li>
-                        <li>Slower page load times (especially on mobile)</li>
-                        <li>Poor user experience and higher bounce rates</li>
-                        <li>Negative impact on SEO rankings</li>
-                    </ul>
-                    <p><strong>Recommended:</strong> Keep images under 100KB for web use. Use compression, modern formats (WebP), and lazy loading.</p>
+            <div class="audit-section">
+                <div style="margin-bottom: 25px;">
+                    <div class="info-box" style="padding: 20px; background: #f0f9ff; border-left: 4px solid var(--info-color); border-radius: 4px; margin-bottom: 20px;">
+                        <p style="margin: 0; line-height: 1.8; color: var(--text-color);">
+                            <strong><i class="fas fa-info-circle" style="color: var(--info-color);"></i> What are Heavy Images?</strong><br>
+                            Large image files (over 200KB) significantly slow down page load times. They consume bandwidth, delay rendering, 
+                            hurt user experience, and negatively impact SEO rankings. <strong>Recommended:</strong> Keep images under 100KB using 
+                            compression, modern formats (WebP/AVIF), and lazy loading.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Page</th>
+                                <th>Image URL</th>
+                                <th>Size</th>
+                                <th>Dimensions</th>
+                                <th>Format</th>
+                                <th>Location</th>
+                                <th>Impact</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="heavyImagesTableBody">
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div class="performance-items-list">
         `;
         
-        allHeavyImages.slice(0, 20).forEach((img, index) => {
+        heavyImagesContainer.innerHTML = html;
+        const tbody = document.getElementById('heavyImagesTableBody');
+        
+        // Sort by size (largest first)
+        const sortedImages = [...allHeavyImages].sort((a, b) => (b.size_kb || 0) - (a.size_kb || 0));
+        
+        sortedImages.forEach((img, index) => {
             const sizeDisplay = img.size_mb >= 1 ? `${img.size_mb.toFixed(2)} MB` : `${img.size_kb.toFixed(2)} KB`;
             const isCritical = img.size_kb > 500;
             const priority = isCritical ? 'Critical' : img.size_kb > 200 ? 'High' : 'Medium';
-            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            const priorityColor = isCritical ? 'danger' : img.size_kb > 200 ? 'warning' : 'info';
+            const savings = Math.round(img.size_kb * 0.7);
             
-            html += `
-                <div class="performance-issue-card ${priorityClass}">
-                    <div class="issue-card-header">
-                        <div class="issue-priority">
-                            <span class="priority-badge ${priorityClass}">
-                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
-                                ${priority} Priority
-                            </span>
-                            <span class="issue-size">${sizeDisplay}</span>
-                        </div>
-                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('heavyImage', ${index})">
-                            <i class="fas fa-wrench"></i> How to Fix
-                        </button>
-                    </div>
-                    <div class="issue-card-content">
-                        <div class="issue-details-grid">
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-image"></i> Image URL:</strong>
-                                <a href="${img.url}" target="_blank" title="${img.url}">
-                                    ${img.url.length > 60 ? img.url.substring(0, 57) + '...' : img.url}
-                                </a>
-                            </div>
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
-                                <a href="${img.page_url}" target="_blank">${img.page_title || img.page_url}</a>
-                            </div>
-                            ${img.width && img.height ? `
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-expand-arrows-alt"></i> Dimensions:</strong>
-                                ${img.width}×${img.height}px
-                            </div>
-                            ` : ''}
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-file"></i> Format:</strong>
-                                ${img.format || 'Unknown'}
-                            </div>
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-map-marker-alt"></i> Location:</strong>
-                                ${img.location || 'Unknown'}
-                            </div>
-                        </div>
-                        ${img.html_snippet ? `
-                        <div class="issue-code-preview">
-                            <strong>Current HTML:</strong>
-                            <pre><code>${img.html_snippet}</code></pre>
-                        </div>
-                        ` : ''}
-                        <div class="issue-impact">
-                            <strong>Impact:</strong>
-                            <span class="impact-text">This image adds ${sizeDisplay} to page load. Optimizing could save approximately ${(img.size_kb * 0.7).toFixed(0)}KB (70% reduction).</span>
-                        </div>
-                    </div>
-                </div>
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <span class="badge badge-${priorityColor}">
+                        <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i> ${priority}
+                    </span>
+                </td>
+                <td>
+                    <a href="${img.page_url}" target="_blank">${truncateUrl(img.page_url, 40)}</a><br>
+                    <small style="color: var(--text-secondary);">${escapeHtml(img.page_title || '').substring(0, 35)}${img.page_title && img.page_title.length > 35 ? '...' : ''}</small>
+                </td>
+                <td>
+                    <a href="${img.url}" target="_blank" title="${img.url}">
+                        ${truncateUrl(img.url, 50)}
+                    </a>
+                </td>
+                <td>
+                    <strong style="color: ${isCritical ? 'var(--danger-color)' : img.size_kb > 200 ? '#ffc107' : 'var(--info-color)'};">
+                        ${sizeDisplay}
+                    </strong>
+                </td>
+                <td>
+                    ${img.width && img.height ? `${img.width}×${img.height}px` : '<span style="color: var(--text-secondary);">N/A</span>'}
+                </td>
+                <td>${img.format || '<span style="color: var(--text-secondary);">Unknown</span>'}</td>
+                <td><small style="color: var(--text-secondary);">${img.location || 'N/A'}</small></td>
+                <td>
+                    <small style="color: var(--text-secondary);">
+                        Could save ~${savings}KB (70%)<br>
+                        <span style="color: ${isCritical ? 'var(--danger-color)' : '#ffc107'};">
+                            ${isCritical ? 'High impact' : 'Moderate impact'}
+                        </span>
+                    </small>
+                </td>
+                <td>
+                    <button class="action-btn action-btn-view" onclick="showPerformanceFixGuide('heavyImage', ${index})">
+                        <i class="fas fa-wrench"></i> Fix Guide
+                    </button>
+                </td>
             `;
+            tbody.appendChild(tr);
         });
         
-        if (allHeavyImages.length > 20) {
-            html += `<div class="performance-more-items">... and ${allHeavyImages.length - 20} more heavy images</div>`;
-        }
-        
-        html += `</div>`;
-        heavyImagesContainer.innerHTML = html;
-        
         // Store heavy images data for fix guide
-        window.performanceHeavyImages = allHeavyImages;
+        window.performanceHeavyImages = sortedImages;
     }
     
-    // Display slow JS/CSS with enhanced UI
+    // Display slow JS/CSS with table UI
     if (allSlowJsCss.length === 0) {
         slowJsCssContainer.innerHTML = `
             <div class="success-message">
@@ -4711,87 +4723,100 @@ function displayPerformanceAnalysis(data) {
         `;
     } else {
         let html = `
-            <div class="performance-issue-intro">
-                <div class="issue-description">
-                    <h4><i class="fas fa-info-circle"></i> About Slow JS/CSS Files</h4>
-                    <p>Large JavaScript and CSS files significantly impact page load times:</p>
-                    <ul>
-                        <li>JavaScript files over 100KB slow down parsing and execution</li>
-                        <li>CSS files block rendering until fully loaded</li>
-                        <li>Unminified code contains unnecessary whitespace and comments</li>
-                        <li>Unused code increases bundle size unnecessarily</li>
-                    </ul>
-                    <p><strong>Recommended:</strong> Keep JS files under 100KB, CSS files under 50KB. Use minification, compression, and code splitting.</p>
+            <div class="audit-section">
+                <div style="margin-bottom: 25px;">
+                    <div class="info-box" style="padding: 20px; background: #f0f9ff; border-left: 4px solid var(--info-color); border-radius: 4px; margin-bottom: 20px;">
+                        <p style="margin: 0; line-height: 1.8; color: var(--text-color);">
+                            <strong><i class="fas fa-info-circle" style="color: var(--info-color);"></i> What are Slow JS/CSS Files?</strong><br>
+                            Large JavaScript files (over 100KB) slow down parsing and execution. CSS files block rendering until loaded. 
+                            Unminified code wastes bandwidth with whitespace and comments. Unused code unnecessarily increases bundle size. 
+                            <strong>Recommended:</strong> Keep JS files under 100KB, CSS under 50KB. Use minification, compression, and code splitting.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="audit-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Page</th>
+                                <th>File URL</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>Render-Blocking</th>
+                                <th>Impact</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="slowJsCssTableBody">
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div class="performance-items-list">
         `;
         
-        allSlowJsCss.slice(0, 20).forEach((file, index) => {
+        slowJsCssContainer.innerHTML = html;
+        const tbody = document.getElementById('slowJsCssTableBody');
+        
+        // Sort by size (largest first)
+        const sortedFiles = [...allSlowJsCss].sort((a, b) => (b.size_kb || 0) - (a.size_kb || 0));
+        
+        sortedFiles.forEach((file, index) => {
             const sizeKB = file.size_kb || 0;
+            const sizeDisplay = sizeKB >= 1024 ? `${(sizeKB / 1024).toFixed(2)} MB` : `${sizeKB.toFixed(2)} KB`;
             const isCritical = sizeKB > 200;
             const priority = isCritical ? 'Critical' : sizeKB > 100 ? 'High' : 'Medium';
-            const priorityClass = isCritical ? 'priority-critical' : 'priority-high';
+            const priorityColor = isCritical ? 'danger' : sizeKB > 100 ? 'warning' : 'info';
+            const timeSaved = Math.round(sizeKB / 50);
             
-            html += `
-                <div class="performance-issue-card ${priorityClass}">
-                    <div class="issue-card-header">
-                        <div class="issue-priority">
-                            <span class="priority-badge ${priorityClass}">
-                                <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i>
-                                ${priority} Priority
-                            </span>
-                            <span class="issue-size">${sizeKB.toFixed(2)} KB</span>
-                        </div>
-                        <button class="btn-fix-guide" onclick="showPerformanceFixGuide('slowJsCss', ${index})">
-                            <i class="fas fa-wrench"></i> How to Fix
-                        </button>
-                    </div>
-                    <div class="issue-card-content">
-                        <div class="issue-details-grid">
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-file-code"></i> File URL:</strong>
-                                <a href="${file.url}" target="_blank" title="${file.url}">
-                                    ${file.url.length > 60 ? file.url.substring(0, 57) + '...' : file.url}
-                                </a>
-                            </div>
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-file-alt"></i> Page:</strong>
-                                <a href="${file.page_url}" target="_blank">${file.page_title || file.page_url}</a>
-                            </div>
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-file"></i> File Type:</strong>
-                                ${file.type || 'Unknown'}
-                            </div>
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-hdd"></i> File Size:</strong>
-                                ${sizeKB >= 1024 ? (sizeKB / 1024).toFixed(2) + ' MB' : sizeKB.toFixed(2) + ' KB'}
-                            </div>
-                            ${file.is_render_blocking ? `
-                            <div class="issue-detail">
-                                <strong><i class="fas fa-ban"></i> Render-Blocking:</strong>
-                                <span class="text-danger">Yes - This file blocks page rendering</span>
-                            </div>
-                            ` : ''}
-                        </div>
-                        <div class="issue-impact">
-                            <strong>Impact:</strong>
-                            <span class="impact-text">This ${file.type || 'file'} (${sizeKB.toFixed(2)} KB) ${file.is_render_blocking ? 'is blocking page rendering and ' : ''}slows down page load. Optimizing could reduce file size by 60-80% and improve load time by ${Math.round(sizeKB / 50)}-${Math.round(sizeKB / 30)}ms.</span>
-                        </div>
-                    </div>
-                </div>
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <span class="badge badge-${priorityColor}">
+                        <i class="fas fa-${isCritical ? 'exclamation-circle' : 'exclamation-triangle'}"></i> ${priority}
+                    </span>
+                </td>
+                <td>
+                    <a href="${file.page_url}" target="_blank">${truncateUrl(file.page_url, 40)}</a><br>
+                    <small style="color: var(--text-secondary);">${escapeHtml(file.page_title || '').substring(0, 35)}${file.page_title && file.page_title.length > 35 ? '...' : ''}</small>
+                </td>
+                <td>
+                    <a href="${file.url}" target="_blank" title="${file.url}">
+                        ${truncateUrl(file.url, 50)}
+                    </a>
+                </td>
+                <td><span class="badge badge-secondary">${file.type || 'Unknown'}</span></td>
+                <td>
+                    <strong style="color: ${isCritical ? 'var(--danger-color)' : sizeKB > 100 ? '#ffc107' : 'var(--info-color)'};">
+                        ${sizeDisplay}
+                    </strong>
+                </td>
+                <td>
+                    ${file.is_render_blocking ? 
+                        '<span class="badge badge-danger"><i class="fas fa-ban"></i> Yes</span>' : 
+                        '<span class="badge badge-success"><i class="fas fa-check"></i> No</span>'
+                    }
+                </td>
+                <td>
+                    <small style="color: var(--text-secondary);">
+                        Could save 60-80%<br>
+                        <span style="color: ${isCritical ? 'var(--danger-color)' : '#ffc107'};">
+                            ~${timeSaved}ms faster
+                        </span>
+                    </small>
+                </td>
+                <td>
+                    <button class="action-btn action-btn-view" onclick="showPerformanceFixGuide('slowJsCss', ${index})">
+                        <i class="fas fa-wrench"></i> Fix Guide
+                    </button>
+                </td>
             `;
+            tbody.appendChild(tr);
         });
         
-        if (allSlowJsCss.length > 20) {
-            html += `<div class="performance-more-items">... and ${allSlowJsCss.length - 20} more slow JS/CSS files</div>`;
-        }
-        
-        html += `</div>`;
-        slowJsCssContainer.innerHTML = html;
-        
         // Store data for fix guide
-        window.performanceSlowJsCss = allSlowJsCss;
+        window.performanceSlowJsCss = sortedFiles;
     }
     
     // Display slow HTML sections with enhanced UI
@@ -5203,6 +5228,31 @@ function showPerformanceFixGuide(issueType, issueIndex) {
 function closePerformanceFixGuide() {
     const modal = document.getElementById('performanceFixGuideModal');
     if (modal) modal.remove();
+}
+
+// Switch Performance Tab
+function switchPerformanceTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.performance-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.performance-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab content
+    const selectedTab = document.getElementById(`performanceTab${tabName.charAt(0).toUpperCase() + tabName.slice(1).replace(/-([a-z])/g, (g) => g[1].toUpperCase())}`);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+    
+    // Add active class to selected tab button
+    const selectedBtn = document.querySelector(`.performance-tab-btn[data-tab="${tabName}"]`);
+    if (selectedBtn) {
+        selectedBtn.classList.add('active');
+    }
 }
 
 // Update SEO Score in summary card from Advanced SEO Audit
